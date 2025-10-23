@@ -130,35 +130,23 @@ def text_vector_search(query: str) -> List[Dict[str, Any]]:
         put_conn(conn)
 
 
-def image_vector_search(image_bytes: bytes, filters: Optional[Dict[str, Any]], top_k: int) -> List[Dict[str, Any]]:
+def image_vector_search(image_bytes: bytes) -> List[Dict[str, Any]]:
     """
     Performs visual similarity search for products based on an image.
     Args:
         image_bytes: The raw bytes of the image to search with.
-        filters: Optional dictionary of filters to apply, e.g. {"category": "sunglasses"}.
-        top_k: The maximum number of products to return.
     Returns:
-        A list of visually similar products.
+        A list of up to 10 visually similar products.
     """
     vec = _embed_image_1408_from_bytes(image_bytes)
     qvec = vector_literal(vec)
-    where = []
-    # Start params list with the vector, which is now parameterized
     params: List[Any] = [qvec]
-    if filters:
-        cat = filters.get("category") if isinstance(filters, dict) else None
-        if cat:
-            where.append("categories ILIKE %s")
-            params.append(f"%{cat}%")
-    where_sql = (" WHERE " + " AND ".join(where)) if where else ""
     sql = (
         "SELECT id, name, description, picture, COALESCE(product_image_url, picture) as product_image_url, "
-        "(product_image_embedding <=> %s::vector) AS distance "  # Use %s placeholder
-        "FROM catalog_items"
-        + where_sql +
-        " ORDER BY distance ASC LIMIT %s"
+        "(product_image_embedding <=> %s::vector) AS distance "
+        "FROM catalog_items "
+        "ORDER BY distance ASC LIMIT 10"
     )
-    params.append(top_k)
 
     conn = get_conn()
     try:
