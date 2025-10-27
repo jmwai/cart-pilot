@@ -4,11 +4,12 @@ import tempfile
 from typing import Any, Dict, List, Optional
 import requests
 
-
 from fastapi import HTTPException
+from sqlalchemy import text as sql_text
 
 from app.common.config import Settings, get_settings
-from app.common.db import get_conn, put_conn
+from app.common.db import get_db_session
+from app.common.models import CatalogItem
 
 
 _mme = None
@@ -93,7 +94,7 @@ def _embed_image_1408_from_bytes(data: bytes) -> List[float]:
 
 def text_vector_search(query: str) -> List[Dict[str, Any]]:
     """
-    Performs semantic text search over catalog products.
+    Performs semantic text search over catalog products using SQLAlchemy and pgvector.
     Args:
         query: The natural language search query.
     Returns:
@@ -101,38 +102,35 @@ def text_vector_search(query: str) -> List[Dict[str, Any]]:
     """
     vec = _embed_text_1408(query)
     qvec = vector_literal(vec)
-    params: List[Any] = [qvec]
-    sql = (
-        "SELECT id, name, description, picture, COALESCE(product_image_url, picture) as product_image_url, "
-        "(product_embedding <=> %s::vector) AS distance "
-        "FROM catalog_items "
-        "ORDER BY distance ASC LIMIT 10"
-    )
 
-    conn = get_conn()
-    try:
-        cur = conn.cursor()
-        try:
-            cur.execute(sql, params)
-            out = []
-            for r in cur.fetchall():
-                out.append({
-                    "id": r[0],
-                    "name": r[1],
-                    "picture": r[3],
-                    "product_image_url": r[4],
-                    "distance": float(r[5]),
-                })
-            return out
-        finally:
-            cur.close()
-    finally:
-        put_conn(conn)
+    with get_db_session() as db:
+        # Use raw SQL for pgvector distance calculation
+        result = db.execute(
+            sql_text(
+                "SELECT id, name, description, picture, "
+                "COALESCE(product_image_url, picture) as product_image_url, "
+                "(product_embedding <=> :vec::vector) AS distance "
+                "FROM catalog_items "
+                "ORDER BY distance ASC LIMIT 10"
+            ),
+            {"vec": qvec}
+        )
+
+        out = []
+        for row in result:
+            out.append({
+                "id": row[0],
+                "name": row[1],
+                "picture": row[3],
+                "product_image_url": row[4],
+                "distance": float(row[5]),
+            })
+        return out
 
 
 def image_vector_search(image_bytes: bytes) -> List[Dict[str, Any]]:
     """
-    Performs visual similarity search for products based on an image.
+    Performs visual similarity search for products based on an image using SQLAlchemy and pgvector.
     Args:
         image_bytes: The raw bytes of the image to search with.
     Returns:
@@ -140,30 +138,27 @@ def image_vector_search(image_bytes: bytes) -> List[Dict[str, Any]]:
     """
     vec = _embed_image_1408_from_bytes(image_bytes)
     qvec = vector_literal(vec)
-    params: List[Any] = [qvec]
-    sql = (
-        "SELECT id, name, description, picture, COALESCE(product_image_url, picture) as product_image_url, "
-        "(product_image_embedding <=> %s::vector) AS distance "
-        "FROM catalog_items "
-        "ORDER BY distance ASC LIMIT 10"
-    )
 
-    conn = get_conn()
-    try:
-        cur = conn.cursor()
-        try:
-            cur.execute(sql, params)
-            out = []
-            for r in cur.fetchall():
-                out.append({
-                    "id": r[0],
-                    "name": r[1],
-                    "picture": r[3],
-                    "product_image_url": r[4],
-                    "distance": float(r[5]),
-                })
-            return out
-        finally:
-            cur.close()
-    finally:
-        put_conn(conn)
+    with get_db_session() as db:
+        # Use raw SQL for pgvector distance calculation
+        result = db.execute(
+            sql_text(
+                "SELECT id, name, description, picture, "
+                "COALESCE(product_image_url, picture) as product_image_url, "
+                "(product_image_embedding <=> :vec::vector) AS distance "
+                "FROM catalog_items "
+                "ORDER BY distance ASC LIMIT 10"
+            ),
+            {"vec": qvec}
+        )
+
+        out = []
+        for row in result:
+            out.append({
+                "id": row[0],
+                "name": row[1],
+                "picture": row[3],
+                "product_image_url": row[4],
+                "distance": float(row[5]),
+            })
+        return out

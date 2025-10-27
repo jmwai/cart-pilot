@@ -313,7 +313,11 @@ This script will:
 
 ### Overview
 
-This section provides a complete guide for implementing a Next.js chatbot frontend that interacts with the Shopping Orchestrator.
+This section provides a complete guide for implementing a Next.js chatbot frontend using the official A2A JavaScript SDK to interact with the Shopping Orchestrator.
+
+**References:**
+- [A2A JavaScript SDK](https://github.com/a2aproject/a2a-js)
+- [A2A Protocol Documentation](https://a2aprotocol.org)
 
 ### Setup
 
@@ -327,89 +331,87 @@ cd shopping-chatbot
 #### 2. Install Dependencies
 
 ```bash
-npm install axios
-npm install @types/node
+npm install @a2a-js/sdk
+npm install uuid
+npm install @types/uuid
 ```
 
-### API Client Implementation
+### API Client Implementation Using A2A SDK
 
 Create `lib/shopping-api.ts`:
 
 ```typescript
-import axios from 'axios';
+import { A2AClient, MessageSendParams } from '@a2a-js/sdk/client';
+import { v4 as uuidv4 } from 'uuid';
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
-
-interface Session {
-  id: string;
-  appName: string;
-  userId: string;
-  state: any;
-}
-
-interface MessagePart {
-  text: string;
-}
-
-interface Message {
-  role: 'user' | 'model';
-  parts: MessagePart[];
-}
-
-interface RunRequest {
-  app_name: string;
-  user_id: string;
-  session_id: string;
-  new_message: Message;
-  streaming: boolean;
-}
+const AGENT_CARD_URL = process.env.NEXT_PUBLIC_AGENT_CARD_URL || 
+  'http://localhost:8080/.well-known/agent-card.json';
 
 class ShoppingAPI {
-  private baseURL: string;
-  private userId: string;
-  private sessionId: string;
+  private client: A2AClient | null = null;
+  private contextId: string;
 
-  constructor(baseURL: string = API_BASE_URL) {
-    this.baseURL = baseURL;
-    this.userId = 'user_' + Math.random().toString(36).substr(2, 9);
-    this.sessionId = 'session_' + Date.now();
+  constructor() {
+    this.contextId = 'context_' + Date.now();
   }
 
-  // Create or update session
-  async createSession(): Promise<Session> {
-    const response = await axios.post(
-      `${this.baseURL}/apps/shopping_orchestrator/users/${this.userId}/sessions/${this.sessionId}`,
-      { state: { preferred_language: 'English' } }
-    );
-    return response.data;
+  // Initialize A2A client from agent card
+  async initialize(): Promise<void> {
+    if (!this.client) {
+      this.client = await A2AClient.fromCardUrl(AGENT_CARD_URL);
+    }
   }
 
-  // Send message to agent
+  // Send message to agent (non-streaming)
   async sendMessage(text: string): Promise<any> {
-    const request: RunRequest = {
-      app_name: 'shopping_orchestrator',
-      user_id: this.userId,
-      session_id: this.sessionId,
-      new_message: {
+    await this.initialize();
+
+    const params: MessageSendParams = {
+      message: {
+        messageId: uuidv4(),
         role: 'user',
-        parts: [{ text }]
+        parts: [{ kind: 'text', text }],
+        kind: 'message',
       },
-      streaming: false
+      configuration: {
+        blocking: true,
+        acceptedOutputModes: ['text/plain'],
+      },
     };
 
-    const response = await axios.post(
-      `${this.baseURL}/run_sse`,
-      request
-    );
+    return await this.client!.sendMessage(params);
+  }
 
-    return response.data;
+  // Send message with streaming support
+  async *sendMessageStream(text: string): AsyncGenerator<any> {
+    await this.initialize();
+
+    const params: MessageSendParams = {
+      message: {
+        messageId: uuidv4(),
+        role: 'user',
+        parts: [{ kind: 'text', text }],
+        kind: 'message',
+      },
+      configuration: {
+        blocking: false,
+        acceptedOutputModes: ['text/plain'],
+      },
+    };
+
+    const stream = this.client!.sendMessageStream(params);
+    
+    for await (const event of stream) {
+      yield event;
+    }
   }
 
   // Health check
   async healthCheck(): Promise<boolean> {
     try {
-      const response = await axios.get(`${this.baseURL}/healthz`);
-      return response.data.status === 'ok';
+      await this.initialize();
+      // A2A client initialization itself is a health check
+      return this.client !== null;
     } catch {
       return false;
     }
@@ -439,23 +441,23 @@ export default function Chat() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
-  const [sessionCreated, setSessionCreated] = useState(false);
+  const [isInitialized, setIsInitialized] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    // Initialize session on mount
-    const initSession = async () => {
+    // Initialize A2A client on mount
+    const init = async () => {
       try {
-        await shoppingAPI.createSession();
-        setSessionCreated(true);
+        await shoppingAPI.initialize();
+        setIsInitialized(true);
         addMessage('assistant', 'Hello! I\'m your shopping assistant. How can I help you today?');
       } catch (error) {
-        console.error('Failed to create session:', error);
+        console.error('Failed to initialize A2A client:', error);
         addMessage('assistant', 'Failed to connect to the shopping assistant. Please try again.');
       }
     };
 
-    initSession();
+    init();
   }, []);
 
   useEffect(() => {
@@ -473,7 +475,7 @@ export default function Chat() {
   const handleSend = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    if (!input.trim() || isLoading || !sessionCreated) return;
+    if (!input.trim() || isLoading || !isInitialized) return;
 
     const userMessage = input.trim();
     setInput('');
@@ -483,11 +485,11 @@ export default function Chat() {
     try {
       const response = await shoppingAPI.sendMessage(userMessage);
       
-      // Extract agent response from the response structure
+      // Extract agent response from A2A response structure
       let assistantMessage = 'I received your message.';
       
-      if (response.content?.parts?.[0]?.text) {
-        assistantMessage = response.content.parts[0].text;
+      if (response.output?.parts) {
+        assistantMessage = response.output.parts.map((p: any) => p.text).join(' ');
       } else if (response.error) {
         assistantMessage = `Error: ${response.error}`;
       }
@@ -543,11 +545,11 @@ export default function Chat() {
             onChange={(e) => setInput(e.target.value)}
             placeholder="Type your message..."
             className="flex-1 px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-            disabled={isLoading || !sessionCreated}
+            disabled={isLoading || !isInitialized}
           />
           <button
             type="submit"
-            disabled={isLoading || !input.trim() || !sessionCreated}
+            disabled={isLoading || !input.trim() || !isInitialized}
             className="px-6 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed"
           >
             Send
@@ -585,8 +587,10 @@ export default function Home() {
 Create `.env.local`:
 
 ```env
-NEXT_PUBLIC_API_URL=http://localhost:8080
+NEXT_PUBLIC_AGENT_CARD_URL=http://localhost:8080/.well-known/agent-card.json
 ```
+
+**Note:** The A2A SDK fetches the agent card from `.well-known/agent-card.json` endpoint. This card contains the agent's capabilities and API endpoints.
 
 ### Error Handling
 
@@ -606,60 +610,80 @@ const handleSendWithRetry = async (message: string, retries = 3) => {
 };
 ```
 
-### Streaming Support (Optional)
+### Streaming Support
 
-For real-time streaming responses:
+Using A2A SDK's built-in streaming:
 
 ```typescript
-async sendMessageStream(text: string, onChunk: (chunk: string) => void) {
-  const request = {
-    app_name: 'shopping_orchestrator',
-    user_id: this.userId,
-    session_id: this.sessionId,
-    new_message: {
-      role: 'user',
-      parts: [{ text }]
-    },
-    streaming: true
-  };
+// In Chat component
+const handleSendStream = async (e: React.FormEvent) => {
+  e.preventDefault();
+  
+  if (!input.trim() || isLoading || !isInitialized) return;
 
-  const response = await fetch(`${this.baseURL}/run_sse`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(request)
-  });
+  const userMessage = input.trim();
+  setInput('');
+  addMessage('user', userMessage);
+  setIsLoading(true);
 
-  const reader = response.body?.getReader();
-  const decoder = new TextDecoder();
+  let fullResponse = '';
 
-  while (true) {
-    const { done, value } = await reader!.read();
-    if (done) break;
-
-    const chunk = decoder.decode(value);
-    const lines = chunk.split('\n');
-    
-    for (const line of lines) {
-      if (line.startsWith('data: ')) {
-        const data = JSON.parse(line.slice(6));
-        if (data.content?.parts?.[0]?.text) {
-          onChunk(data.content.parts[0].text);
-        }
+  try {
+    // Use streaming method
+    for await (const event of shoppingAPI.sendMessageStream(userMessage)) {
+      if (event.kind === 'task') {
+        console.log(`Task created: ${event.id}`);
+      } else if (event.kind === 'status-update') {
+        console.log(`Status: ${event.status.state}`);
+      } else if (event.kind === 'artifact-update') {
+        // Extract text from artifact
+        const text = event.artifact.output?.parts?.map((p: any) => p.text).join(' ') || '';
+        fullResponse += text;
+        
+        // Update the latest assistant message with streaming content
+        setMessages(prev => {
+          const updated = [...prev];
+          const lastMsg = updated[updated.length - 1];
+          if (lastMsg.role === 'assistant') {
+            lastMsg.content = fullResponse;
+          } else {
+            updated.push({
+              role: 'assistant',
+              content: fullResponse,
+              timestamp: new Date()
+            });
+          }
+          return updated;
+        });
       }
     }
+  } catch (error) {
+    console.error('Error in streaming:', error);
+    addMessage('assistant', 'Sorry, I encountered an error. Please try again.');
+  } finally {
+    setIsLoading(false);
   }
-}
+};
 ```
+
+**Benefits of A2A SDK Streaming:**
+- **Event Types**: `task`, `status-update`, `artifact-update` events
+- **Clean API**: No manual SSE parsing
+- **Progress Tracking**: Real-time status updates
+- **Task Management**: Built-in task lifecycle handling
 
 ### Best Practices
 
-1. **Session Management**: Create session once on mount, reuse throughout
-2. **Loading States**: Show "Thinking..." indicator during agent processing
-3. **Error Handling**: Implement retry logic and user-friendly error messages
-4. **Auto-scroll**: Scroll to latest message automatically
-5. **Input Validation**: Disable send button when input is empty
-6. **Responsive Design**: Use Tailwind for mobile-friendly layout
-7. **Message Persistence**: Optional - save messages to localStorage or database
+1. **Agent Card**: A2A SDK fetches agent capabilities from `.well-known/agent-card.json`
+2. **Client Initialization**: Initialize A2A client once, reuse throughout session
+3. **Loading States**: Show "Thinking..." indicator during agent processing
+4. **Error Handling**: Implement retry logic and user-friendly error messages
+5. **Auto-scroll**: Scroll to latest message automatically
+6. **Input Validation**: Disable send button when input is empty
+7. **Responsive Design**: Use Tailwind for mobile-friendly layout
+8. **Message Persistence**: Optional - save messages to localStorage or database
+9. **Event Handling**: Process A2A events (`task`, `status-update`, `artifact-update`) for rich UX
+10. **Task Lifecycle**: Use task status updates to show progress (working → completed)
 
 ### Testing
 
@@ -673,6 +697,119 @@ npm run dev
 # - "Add the first one to my cart"
 # - "Show me my cart"
 # - "Checkout with address 123 Main St"
+```
+
+---
+
+## Future Refactoring: A2A AgentExecutor Pattern
+
+### Overview
+
+Currently, the orchestrator uses ADK's native `LlmAgent` with `AgentTool` delegation. For enhanced A2A compliance and Cloud Run deployment, consider refactoring to use the AgentExecutor pattern that wraps ADK agents for A2A protocol compatibility.
+
+**Benefits:**
+- Full A2A protocol compliance
+- Task lifecycle management
+- Better Cloud Run integration
+- Cancellation support
+- Event-driven architecture
+
+### Reference Implementation
+
+The A2A samples project provides reference implementations:
+- [ADK Cloud Run Agent Executor](https://github.com/a2aproject/a2a-samples/blob/main/samples/python/agents/adk_cloud_run/agent_executor.py)
+- [ADK Cloud Run Agent](https://github.com/a2aproject/a2a-samples/blob/main/samples/python/agents/adk_cloud_run/agent.py)
+- [ADK Cloud Run Main](https://github.com/a2aproject/a2a-samples/blob/main/samples/python/agents/adk_cloud_run/__main__.py)
+
+### Proposed Refactoring Steps
+
+#### 1. Create Agent Executor Wrapper
+
+```python
+# app/orchestrator_agent/agent_executor.py
+from typing import Set
+from a2a_python import AgentExecutor, RequestContext, ExecutionEventBus
+from app.orchestrator_agent.agent import root_agent
+
+class OrchestratorAgentExecutor(AgentExecutor):
+    """A2A-compliant wrapper for ADK orchestrator agent."""
+    
+    def __init__(self):
+        self.cancelled_tasks: Set[str] = set()
+        self.adk_agent = root_agent
+    
+    async def cancel_task(self, task_id: str, event_bus: ExecutionEventBus) -> None:
+        """Handle task cancellation."""
+        self.cancelled_tasks.add(task_id)
+        # Publish cancellation event
+    
+    async def execute(self, request_context: RequestContext, event_bus: ExecutionEventBus) -> None:
+        """Execute orchestration using ADK agent."""
+        task_id = request_context.task_id
+        user_message = request_context.user_message
+        
+        # Check for cancellation
+        if task_id in self.cancelled_tasks:
+            # Publish cancelled status
+            return
+        
+        # Publish working status
+        # Run ADK agent with user message
+        # Publish results as artifacts
+        # Publish completed status
+```
+
+#### 2. Integration Considerations
+
+**Current Architecture:**
+- Uses `get_fast_api_app()` from ADK
+- Agents discovered via directory structure
+- Session-based state management
+
+**Refactored Architecture:**
+- AgentExecutor wraps ADK agents
+- A2A protocol for client communication
+- Task-based lifecycle management
+- Event-driven updates
+
+**Migration Path:**
+1. Add A2A Python SDK to requirements
+2. Create executor wrapper for orchestrator
+3. Update main.py to use executor pattern
+4. Test with A2A JS SDK client
+5. Gradually migrate other agents
+
+#### 3. When to Refactor
+
+**Good reasons to refactor:**
+- Need full A2A compliance
+- Planning Cloud Run deployment
+- Require task cancellation
+- Want event-driven updates
+- Need agent-to-agent communication
+
+**Current implementation is sufficient if:**
+- Using ADK's built-in FastAPI app
+- Primary use case is web chatbot
+- Simplicity is priority
+- No need for A2A agent-to-agent features
+
+### Testing the Refactored Version
+
+After refactoring:
+
+```bash
+# Test with A2A client
+from a2a_python import A2AClient
+
+client = await A2AClient.from_card_url("http://localhost:8080/.well-known/agent-card.json")
+response = await client.send_message({
+    "message": {
+        "messageId": "msg_123",
+        "role": "user",
+        "parts": [{"kind": "text", "text": "Find running shoes"}]
+    }
+})
 ```
 
 ---

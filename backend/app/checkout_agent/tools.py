@@ -2,8 +2,10 @@ from __future__ import annotations
 from typing import Any, Dict, List
 import uuid
 from datetime import datetime
+from sqlalchemy import func
 
-from app.common.db import get_conn, put_conn
+from app.common.db import get_db_session
+from app.common.models import CartItem, Order, OrderItem, CatalogItem
 
 
 def create_order(session_id: str, shipping_address: str) -> Dict[str, Any]:
@@ -17,20 +19,11 @@ def create_order(session_id: str, shipping_address: str) -> Dict[str, Any]:
     Returns:
         Order details with status
     """
-    conn = get_conn()
-    try:
-        cur = conn.cursor()
-
-        # Get cart items
-        cur.execute(
-            """SELECT ci.product_id, ci.quantity, c.name, c.picture
-               FROM cart_items ci
-               JOIN catalog_items c ON ci.product_id = c.id
-               WHERE ci.session_id = %s""",
-            (session_id,)
-        )
-
-        cart_items = cur.fetchall()
+    with get_db_session() as db:
+        # Get cart items with product relationship
+        cart_items = db.query(CartItem).filter(
+            CartItem.session_id == session_id
+        ).all()
 
         if not cart_items:
             raise ValueError("Cart is empty")
@@ -39,37 +32,39 @@ def create_order(session_id: str, shipping_address: str) -> Dict[str, Any]:
         order_id = str(uuid.uuid4())
         total_amount = 0.0  # TODO: Calculate from product prices
 
-        cur.execute(
-            """INSERT INTO orders (order_id, session_id, total_amount, status, shipping_address, created_at)
-               VALUES (%s, %s, %s, %s, %s, %s)""",
-            (order_id, session_id, total_amount,
-             "pending", shipping_address, datetime.now())
+        order = Order(
+            order_id=order_id,
+            session_id=session_id,
+            total_amount=total_amount,
+            status="pending",
+            shipping_address=shipping_address
         )
+        db.add(order)
 
         # Create order items
         items = []
-        for row in cart_items:
-            product_id, quantity, name, picture = row
+        for cart_item in cart_items:
+            product = cart_item.product
             price = 0.0  # TODO: Get from product
 
-            cur.execute(
-                """INSERT INTO order_items (order_id, product_id, quantity, price)
-                   VALUES (%s, %s, %s, %s)""",
-                (order_id, product_id, quantity, price)
+            order_item = OrderItem(
+                order_id=order_id,
+                product_id=cart_item.product_id,
+                quantity=cart_item.quantity,
+                price=price
             )
+            db.add(order_item)
 
             items.append({
-                "product_id": product_id,
-                "name": name,
-                "quantity": quantity,
+                "product_id": cart_item.product_id,
+                "name": product.name,
+                "quantity": cart_item.quantity,
                 "price": price,
             })
 
         # Clear cart
-        cur.execute("DELETE FROM cart_items WHERE session_id = %s",
-                    (session_id,))
-
-        conn.commit()
+        db.query(CartItem).filter(CartItem.session_id == session_id).delete()
+        # commit() happens automatically in context manager
 
         return {
             "order_id": order_id,
@@ -77,11 +72,9 @@ def create_order(session_id: str, shipping_address: str) -> Dict[str, Any]:
             "items": items,
             "total_amount": total_amount,
             "shipping_address": shipping_address,
-            "created_at": datetime.now().isoformat(),
+            "created_at": order.created_at.isoformat(),
             "message": "Order created successfully",
         }
-    finally:
-        put_conn(conn)
 
 
 def get_order_status(order_id: str) -> Dict[str, Any]:
@@ -94,51 +87,33 @@ def get_order_status(order_id: str) -> Dict[str, Any]:
     Returns:
         Order details with status
     """
-    conn = get_conn()
-    try:
-        cur = conn.cursor()
-
-        # Get order
-        cur.execute(
-            """SELECT order_id, status, total_amount, shipping_address, created_at
-               FROM orders WHERE order_id = %s""",
-            (order_id,)
-        )
-
-        order = cur.fetchone()
+    with get_db_session() as db:
+        # Get order with items relationship
+        order = db.query(Order).filter(Order.order_id == order_id).first()
 
         if not order:
             raise ValueError(f"Order {order_id} not found")
 
-        # Get order items
-        cur.execute(
-            """SELECT oi.product_id, oi.quantity, oi.price, c.name
-               FROM order_items oi
-               JOIN catalog_items c ON oi.product_id = c.id
-               WHERE oi.order_id = %s""",
-            (order_id,)
-        )
-
+        # Get order items via relationship
         items = []
-        for row in cur.fetchall():
+        for order_item in order.items:
+            product = order_item.product
             items.append({
-                "product_id": row[0],
-                "name": row[3],
-                "quantity": row[1],
-                "price": row[2],
+                "product_id": order_item.product_id,
+                "name": product.name,
+                "quantity": order_item.quantity,
+                "price": order_item.price,
             })
 
         return {
-            "order_id": order[0],
-            "status": order[1],
+            "order_id": order.order_id,
+            "status": order.status,
             "items": items,
-            "total_amount": float(order[2]),
-            "shipping_address": order[3],
-            "created_at": order[4].isoformat() if order[4] else "",
-            "message": f"Order status: {order[1]}",
+            "total_amount": order.total_amount,
+            "shipping_address": order.shipping_address,
+            "created_at": order.created_at.isoformat() if order.created_at else "",
+            "message": f"Order status: {order.status}",
         }
-    finally:
-        put_conn(conn)
 
 
 def cancel_order(order_id: str) -> Dict[str, Any]:
@@ -151,36 +126,26 @@ def cancel_order(order_id: str) -> Dict[str, Any]:
     Returns:
         Status with refund amount
     """
-    conn = get_conn()
-    try:
-        cur = conn.cursor()
-
-        # Get order
-        cur.execute(
-            "SELECT status, total_amount FROM orders WHERE order_id = %s", (order_id,))
-        order = cur.fetchone()
+    with get_db_session() as db:
+        order = db.query(Order).filter(Order.order_id == order_id).first()
 
         if not order:
             raise ValueError(f"Order {order_id} not found")
 
-        if order[0] not in ["pending", "processing"]:
-            raise ValueError(f"Cannot cancel order with status: {order[0]}")
+        if order.status not in ["pending", "processing"]:
+            raise ValueError(
+                f"Cannot cancel order with status: {order.status}")
 
         # Update order status
-        cur.execute(
-            "UPDATE orders SET status = 'cancelled' WHERE order_id = %s",
-            (order_id,)
-        )
-        conn.commit()
+        order.status = "cancelled"
+        # commit() happens automatically in context manager
 
         return {
             "order_id": order_id,
             "status": "cancelled",
-            "refund_amount": float(order[1]),
+            "refund_amount": order.total_amount,
             "message": "Order cancelled successfully",
         }
-    finally:
-        put_conn(conn)
 
 
 def validate_cart_for_checkout(session_id: str) -> Dict[str, Any]:
@@ -193,17 +158,11 @@ def validate_cart_for_checkout(session_id: str) -> Dict[str, Any]:
     Returns:
         Validation result with errors and warnings
     """
-    conn = get_conn()
-    try:
-        cur = conn.cursor()
-
+    with get_db_session() as db:
         # Check if cart has items
-        cur.execute(
-            "SELECT COUNT(*) FROM cart_items WHERE session_id = %s",
-            (session_id,)
-        )
-
-        item_count = cur.fetchone()[0]
+        item_count = db.query(func.count(CartItem.cart_item_id)).filter(
+            CartItem.session_id == session_id
+        ).scalar() or 0
 
         errors = []
         warnings = []
@@ -217,5 +176,3 @@ def validate_cart_for_checkout(session_id: str) -> Dict[str, Any]:
             "warnings": warnings,
             "item_count": item_count,
         }
-    finally:
-        put_conn(conn)
