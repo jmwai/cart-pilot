@@ -2,7 +2,24 @@
 
 ## Overview
 
-Successfully implemented a complete e-commerce frontend for Sole Search with AI-powered shopping assistant integration. The application features a product listing page, product detail pages, and a floating chatbox for AI-assisted shopping.
+Successfully implemented a complete e-commerce frontend for Sole Search with AI-powered shopping assistant integration. The application follows an **agent-driven architecture** where product discovery, cart management, checkout, payments, and customer support are all handled through the AI chat interface. The UI serves as a visual catalog while the agent orchestrates all shopping operations.
+
+## Architecture Decision: Agent-Driven Shopping
+
+**Key Principle**: The AI agent is the primary interface for all shopping operations.
+
+### What the Agent Handles:
+- ✅ **Product Discovery** - Search, browse, and filter products via natural language
+- ✅ **Cart Management** - Add/remove items, view cart, update quantities
+- ✅ **Checkout** - Create orders, provide shipping information
+- ✅ **Payments** - Process payments with AP2 compliance
+- ✅ **Customer Support** - Handle returns, refunds, inquiries
+
+### What the UI Provides:
+- ✅ **Visual Catalog** - Display products for browsing
+- ✅ **Product Information** - Show product details and images
+- ✅ **Chat Interface** - Enable natural language interaction with agent
+- ✅ **Visual Feedback** - Display agent responses and confirmations
 
 ## Implementation Details
 
@@ -140,18 +157,27 @@ frontend/src/
 - [x] Error handling in chatbox
 
 ### 🚧 Future Enhancements
+
+**Agent Integration:**
 - [ ] Real product images from backend API
-- [ ] Shopping cart UI functionality
-- [ ] Product search and filtering
+- [ ] Cart counter badge showing item count
+- [ ] Cart items displayed in separate UI panel
+- [ ] Order history page
+- [ ] Order tracking with status updates
+- [ ] Product search via agent with UI results
+- [ ] Image upload for visual product search
+- [ ] Recommendation engine integration
+
+**UI Enhancements:**
 - [ ] User authentication
-- [ ] Payment integration
-- [ ] Order tracking
+- [ ] Payment form fallback (non-agent)
 - [ ] Wishlist functionality
-- [ ] Product reviews
+- [ ] Product reviews display
 - [ ] Image zoom on product detail page
 - [ ] Color selector for products
-- [ ] Quantity selector
+- [ ] Quantity selector in cart
 - [ ] Stock availability display
+- [ ] Quick action buttons (e.g., "Ask agent about this product")
 
 ## File Summary
 
@@ -244,15 +270,71 @@ NEXT_PUBLIC_BACKEND_URL=http://localhost:8080
 NEXT_PUBLIC_DEFAULT_USER_ID=user_guest
 ```
 
+## Agent-Driven User Flows
+
+### Complete Shopping Journey via Agent
+
+#### 1. Product Discovery
+```
+User (Chat): "Find me running shoes"
+Agent: Searches products → Returns matching products with details
+UI: Displays product grid → User clicks to view details
+```
+
+#### 2. Add to Cart
+```
+User (Chat): "Add Air Jordan 1 to my cart"
+Agent: Creates cart item → Returns confirmation
+UI: Shows visual confirmation in chat → Cart counter updates
+```
+
+#### 3. View Cart
+```
+User (Chat): "Show me my cart"
+Agent: Retrieves cart items → Returns formatted cart summary
+UI: Displays cart contents in chat → Shows total
+```
+
+#### 4. Checkout
+```
+User (Chat): "Checkout with address 123 Main St, New York"
+Agent: Creates order → Returns order confirmation
+UI: Shows order details → Confirms shipping address
+```
+
+#### 5. Payment
+```
+User (Chat): "Pay for my order with credit card"
+Agent: Processes payment → Returns transaction details
+UI: Confirms payment → Shows order status
+```
+
+#### 6. Customer Support
+```
+User (Chat): "I want to return my order ORD-123"
+Agent: Creates return inquiry → Returns return details
+UI: Confirms return initiated → Provides return instructions
+```
+
+### Benefits of Agent-Driven Architecture
+
+1. **Natural Language Interface** - Users express intent naturally
+2. **Unified Experience** - Single chat interface for all operations
+3. **Context Awareness** - Agent remembers conversation history
+4. **Smart Routing** - Agent orchestrates specialized sub-agents
+5. **AP2 Compliance** - All financial transactions cryptographically verified
+6. **Accessibility** - Chat interface works for all users
+7. **Efficiency** - No need to navigate multiple pages
+
 ## Known Limitations
 
 1. **Product Images**: Using placeholder gradients instead of real images
-2. **Cart Functionality**: UI buttons don't yet trigger cart actions
-3. **Search**: No search bar implemented yet
-4. **Filters**: No category or price filtering
+2. **Cart Functionality**: UI buttons don't yet trigger cart actions (future enhancement)
+3. **Search**: No UI search bar - all search via agent chat
+4. **Filters**: No UI filters - all filtering via agent chat
 5. **Authentication**: Sign Up/Login buttons are placeholders
-6. **Checkout**: No checkout flow implemented
-7. **Payment**: No payment integration
+6. **Checkout UI**: No separate checkout page - handled via agent
+7. **Payment UI**: No payment form - handled via agent with AP2 mandates
 
 ## Performance Considerations
 
