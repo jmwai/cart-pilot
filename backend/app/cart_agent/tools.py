@@ -2,8 +2,10 @@ from __future__ import annotations
 from typing import Any, Dict, List
 import uuid
 from datetime import datetime
+from sqlalchemy import func
 
-from app.common.db import get_conn, put_conn
+from app.common.db import get_db_session
+from app.common.models import CartItem, CatalogItem
 
 
 def add_to_cart(product_id: str, quantity: int, session_id: str) -> Dict[str, Any]:
@@ -21,38 +23,31 @@ def add_to_cart(product_id: str, quantity: int, session_id: str) -> Dict[str, An
     if quantity <= 0:
         raise ValueError("Quantity must be greater than 0")
 
-    # Get product details first
-    conn = get_conn()
-    try:
-        cur = conn.cursor()
-        cur.execute(
-            "SELECT id, name, picture, product_image_url FROM catalog_items WHERE id = %s",
-            (product_id,)
-        )
-        product = cur.fetchone()
-
+    with get_db_session() as db:
+        # Get product details
+        product = db.query(CatalogItem).filter(
+            CatalogItem.id == product_id).first()
         if not product:
             raise ValueError(f"Product {product_id} not found")
 
-        # Insert cart item
-        cart_item_id = str(uuid.uuid4())
-        cur.execute(
-            """INSERT INTO cart_items (cart_item_id, session_id, product_id, quantity, added_at)
-               VALUES (%s, %s, %s, %s, %s)""",
-            (cart_item_id, session_id, product_id, quantity, datetime.now())
+        # Create cart item
+        cart_item = CartItem(
+            cart_item_id=str(uuid.uuid4()),
+            session_id=session_id,
+            product_id=product_id,
+            quantity=quantity
         )
-        conn.commit()
+        db.add(cart_item)
+        # commit() happens automatically in context manager
 
         return {
-            "cart_item_id": cart_item_id,
+            "cart_item_id": cart_item.cart_item_id,
             "product_id": product_id,
-            "name": product[1],
-            "picture": product[3] or product[2],
+            "name": product.name,
+            "picture": product.product_image_url or product.picture,
             "quantity": quantity,
-            "added_at": datetime.now().isoformat(),
+            "added_at": cart_item.created_at.isoformat(),
         }
-    finally:
-        put_conn(conn)
 
 
 def get_cart(session_id: str) -> List[Dict[str, Any]]:
@@ -65,32 +60,25 @@ def get_cart(session_id: str) -> List[Dict[str, Any]]:
     Returns:
         List of cart items with details
     """
-    conn = get_conn()
-    try:
-        cur = conn.cursor()
-        cur.execute(
-            """SELECT ci.cart_item_id, ci.product_id, ci.quantity, 
-                      c.name, c.picture, c.product_image_url
-               FROM cart_items ci
-               JOIN catalog_items c ON ci.product_id = c.id
-               WHERE ci.session_id = %s
-               ORDER BY ci.added_at DESC""",
-            (session_id,)
-        )
+    with get_db_session() as db:
+        # Query cart items with product relationship
+        cart_items = db.query(CartItem).filter(
+            CartItem.session_id == session_id
+        ).order_by(CartItem.added_at.desc()).all()
 
         items = []
-        for row in cur.fetchall():
+        for item in cart_items:
+            # Load product data via relationship
+            product = item.product
             items.append({
-                "cart_item_id": row[0],
-                "product_id": row[1],
-                "quantity": row[2],
-                "name": row[3],
-                "picture": row[5] or row[4],
+                "cart_item_id": item.cart_item_id,
+                "product_id": item.product_id,
+                "quantity": item.quantity,
+                "name": product.name,
+                "picture": product.product_image_url or product.picture,
             })
 
         return items
-    finally:
-        put_conn(conn)
 
 
 def update_cart_item(cart_item_id: str, quantity: int) -> Dict[str, Any]:
@@ -107,25 +95,20 @@ def update_cart_item(cart_item_id: str, quantity: int) -> Dict[str, Any]:
     if quantity <= 0:
         raise ValueError("Quantity must be greater than 0")
 
-    conn = get_conn()
-    try:
-        cur = conn.cursor()
-        cur.execute(
-            "UPDATE cart_items SET quantity = %s WHERE cart_item_id = %s",
-            (quantity, cart_item_id)
-        )
-        conn.commit()
-
-        if cur.rowcount == 0:
+    with get_db_session() as db:
+        cart_item = db.query(CartItem).filter(
+            CartItem.cart_item_id == cart_item_id).first()
+        if not cart_item:
             raise ValueError(f"Cart item {cart_item_id} not found")
+
+        cart_item.quantity = quantity
+        # commit() happens automatically in context manager
 
         return {
             "cart_item_id": cart_item_id,
             "quantity": quantity,
             "updated_at": datetime.now().isoformat(),
         }
-    finally:
-        put_conn(conn)
 
 
 def remove_from_cart(cart_item_id: str) -> Dict[str, Any]:
@@ -138,22 +121,19 @@ def remove_from_cart(cart_item_id: str) -> Dict[str, Any]:
     Returns:
         Status message
     """
-    conn = get_conn()
-    try:
-        cur = conn.cursor()
-        cur.execute(
-            "DELETE FROM cart_items WHERE cart_item_id = %s", (cart_item_id,))
-        conn.commit()
-
-        if cur.rowcount == 0:
+    with get_db_session() as db:
+        cart_item = db.query(CartItem).filter(
+            CartItem.cart_item_id == cart_item_id).first()
+        if not cart_item:
             raise ValueError(f"Cart item {cart_item_id} not found")
+
+        db.delete(cart_item)
+        # commit() happens automatically in context manager
 
         return {
             "status": "removed",
             "cart_item_id": cart_item_id,
         }
-    finally:
-        put_conn(conn)
 
 
 def clear_cart(session_id: str) -> Dict[str, Any]:
@@ -166,19 +146,15 @@ def clear_cart(session_id: str) -> Dict[str, Any]:
     Returns:
         Status with items removed count
     """
-    conn = get_conn()
-    try:
-        cur = conn.cursor()
-        cur.execute("DELETE FROM cart_items WHERE session_id = %s",
-                    (session_id,))
-        conn.commit()
+    with get_db_session() as db:
+        items_removed = db.query(CartItem).filter(
+            CartItem.session_id == session_id).delete()
+        # commit() happens automatically in context manager
 
         return {
             "status": "cleared",
-            "items_removed": cur.rowcount,
+            "items_removed": items_removed,
         }
-    finally:
-        put_conn(conn)
 
 
 def get_cart_total(session_id: str) -> Dict[str, Any]:
@@ -191,24 +167,18 @@ def get_cart_total(session_id: str) -> Dict[str, Any]:
     Returns:
         Cart totals and item count
     """
-    conn = get_conn()
-    try:
-        cur = conn.cursor()
-        cur.execute(
-            """SELECT COUNT(*), SUM(ci.quantity)
-               FROM cart_items ci
-               WHERE ci.session_id = %s""",
-            (session_id,)
-        )
+    with get_db_session() as db:
+        # Get counts and sums using SQLAlchemy aggregation
+        item_count = db.query(func.count(CartItem.cart_item_id)).filter(
+            CartItem.session_id == session_id
+        ).scalar() or 0
 
-        result = cur.fetchone()
-        item_count = result[0] or 0
-        total_items = result[1] or 0
+        total_items = db.query(func.sum(CartItem.quantity)).filter(
+            CartItem.session_id == session_id
+        ).scalar() or 0
 
         return {
             "item_count": item_count,
             "total_items": total_items,
             "subtotal": 0.0,  # TODO: Calculate from product prices
         }
-    finally:
-        put_conn(conn)

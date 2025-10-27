@@ -3,7 +3,8 @@ from typing import Any, Dict, List, Optional
 import uuid
 from datetime import datetime
 
-from app.common.db import get_conn, put_conn
+from app.common.db import get_db_session
+from app.common.models import CustomerInquiry, Order
 
 
 def create_inquiry(inquiry_type: str, message: str, session_id: str, order_id: Optional[str] = None) -> Dict[str, Any]:
@@ -24,20 +25,19 @@ def create_inquiry(inquiry_type: str, message: str, session_id: str, order_id: O
     if inquiry_type not in valid_types:
         raise ValueError(f"Inquiry type must be one of: {valid_types}")
 
-    conn = get_conn()
-    try:
-        cur = conn.cursor()
-
+    with get_db_session() as db:
         inquiry_id = str(uuid.uuid4())
 
-        cur.execute(
-            """INSERT INTO customer_inquiries (inquiry_id, session_id, inquiry_type, message, 
-                                                related_order_id, status, created_at)
-               VALUES (%s, %s, %s, %s, %s, %s, %s)""",
-            (inquiry_id, session_id, inquiry_type,
-             message, order_id, "open", datetime.now())
+        inquiry = CustomerInquiry(
+            inquiry_id=inquiry_id,
+            session_id=session_id,
+            inquiry_type=inquiry_type,
+            message=message,
+            related_order_id=order_id,
+            status="open"
         )
-        conn.commit()
+        db.add(inquiry)
+        # commit() happens automatically in context manager
 
         return {
             "inquiry_id": inquiry_id,
@@ -45,11 +45,9 @@ def create_inquiry(inquiry_type: str, message: str, session_id: str, order_id: O
             "message": message,
             "status": "open",
             "order_id": order_id,
-            "created_at": datetime.now().isoformat(),
+            "created_at": inquiry.created_at.isoformat(),
             "response": "Your inquiry has been submitted and will be reviewed.",
         }
-    finally:
-        put_conn(conn)
 
 
 def get_inquiry_status(inquiry_id: str) -> Dict[str, Any]:
@@ -62,32 +60,22 @@ def get_inquiry_status(inquiry_id: str) -> Dict[str, Any]:
     Returns:
         Inquiry status details
     """
-    conn = get_conn()
-    try:
-        cur = conn.cursor()
-
-        cur.execute(
-            """SELECT inquiry_id, inquiry_type, message, status, related_order_id, created_at
-               FROM customer_inquiries WHERE inquiry_id = %s""",
-            (inquiry_id,)
-        )
-
-        inquiry = cur.fetchone()
+    with get_db_session() as db:
+        inquiry = db.query(CustomerInquiry).filter(
+            CustomerInquiry.inquiry_id == inquiry_id).first()
 
         if not inquiry:
             raise ValueError(f"Inquiry {inquiry_id} not found")
 
         return {
-            "inquiry_id": inquiry[0],
-            "inquiry_type": inquiry[1],
-            "message": inquiry[2],
-            "status": inquiry[3],
-            "order_id": inquiry[4],
-            "created_at": inquiry[5].isoformat() if inquiry[5] else "",
-            "response": f"Inquiry status: {inquiry[3]}",
+            "inquiry_id": inquiry.inquiry_id,
+            "inquiry_type": inquiry.inquiry_type,
+            "message": inquiry.message,
+            "status": inquiry.status,
+            "order_id": inquiry.related_order_id,
+            "created_at": inquiry.created_at.isoformat() if inquiry.created_at else "",
+            "response": f"Inquiry status: {inquiry.status}",
         }
-    finally:
-        put_conn(conn)
 
 
 def search_faq(query: str) -> List[Dict[str, Any]]:
@@ -144,14 +132,9 @@ def initiate_return(order_id: str, reason: str, session_id: str) -> Dict[str, An
     Returns:
         Return details with instructions
     """
-    conn = get_conn()
-    try:
-        cur = conn.cursor()
-
+    with get_db_session() as db:
         # Get order
-        cur.execute(
-            "SELECT status FROM orders WHERE order_id = %s", (order_id,))
-        order = cur.fetchone()
+        order = db.query(Order).filter(Order.order_id == order_id).first()
 
         if not order:
             raise ValueError(f"Order {order_id} not found")
@@ -167,8 +150,6 @@ def initiate_return(order_id: str, reason: str, session_id: str) -> Dict[str, An
             "instructions": "Please package the item securely and schedule a pickup.",
             "inquiry_id": inquiry_result["inquiry_id"],
         }
-    finally:
-        put_conn(conn)
 
 
 def get_order_inquiries(order_id: str) -> List[Dict[str, Any]]:
@@ -181,26 +162,18 @@ def get_order_inquiries(order_id: str) -> List[Dict[str, Any]]:
     Returns:
         List of inquiries related to the order
     """
-    conn = get_conn()
-    try:
-        cur = conn.cursor()
+    with get_db_session() as db:
+        inquiries = db.query(CustomerInquiry).filter(
+            CustomerInquiry.related_order_id == order_id
+        ).order_by(CustomerInquiry.created_at.desc()).all()
 
-        cur.execute(
-            """SELECT inquiry_id, inquiry_type, status, created_at
-               FROM customer_inquiries WHERE related_order_id = %s
-               ORDER BY created_at DESC""",
-            (order_id,)
-        )
-
-        inquiries = []
-        for row in cur.fetchall():
-            inquiries.append({
-                "inquiry_id": row[0],
-                "inquiry_type": row[1],
-                "status": row[2],
-                "created_at": row[3].isoformat() if row[3] else "",
+        result = []
+        for inquiry in inquiries:
+            result.append({
+                "inquiry_id": inquiry.inquiry_id,
+                "inquiry_type": inquiry.inquiry_type,
+                "status": inquiry.status,
+                "created_at": inquiry.created_at.isoformat() if inquiry.created_at else "",
             })
 
-        return inquiries
-    finally:
-        put_conn(conn)
+        return result
