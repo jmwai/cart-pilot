@@ -6,9 +6,25 @@ A modern e-commerce frontend with AI-powered shopping assistant, built with Next
 
 - 🏠 **Product Listing Page** - Browse featured products in a clean grid layout
 - 📦 **Product Detail Page** - Detailed product view with images, specs, and "You Might Also Like" recommendations
-- 💬 **AI Chat Assistant** - Floating chatbox for real-time interaction with the shopping orchestrator agent
+- 💬 **AI Chat Assistant** - Floating chatbox that handles ALL shopping operations:
+  - 🔍 Product discovery and search
+  - 🛒 Cart management (add, remove, update)
+  - 📦 Checkout and order creation
+  - 💳 Payment processing (AP2-compliant)
+  - 🎧 Customer support and returns
 - 🎨 **Modern UI** - Clean, minimalist design inspired by the Sole Search reference images
 - 📱 **Responsive Design** - Works seamlessly on desktop, tablet, and mobile devices
+
+## Architecture: Agent-Driven Shopping
+
+This application follows an **agent-driven architecture** where the AI chat assistant orchestrates all shopping operations. Users interact naturally through conversation while the agent:
+
+1. **Routes requests** to specialized backend agents (product discovery, cart, checkout, payment, support)
+2. **Maintains context** across the entire shopping journey
+3. **Handles AP2 compliance** for all financial transactions
+4. **Provides recommendations** based on user preferences
+
+The UI serves as a visual catalog while the agent handles all transactions.
 
 ## Tech Stack
 
@@ -153,21 +169,119 @@ Currently using mock product data (`src/lib/mock-products.ts`). Replace with act
 
 3. Open `http://localhost:3000` in your browser
 
-4. Test the chatbox by clicking the floating chat icon and sending messages like:
-   - "Find me running shoes"
-   - "Show me the picture of Air Jordan 1"
-   - "Add Air Jordan 1 to my cart"
+4. Test the agent-driven shopping flow:
+
+### Product Discovery
+```
+Click chat icon → "Find me running shoes"
+Agent searches and returns matching products
+```
+
+### Add to Cart
+```
+"Add Air Jordan 1 to my cart"
+Agent creates cart item and confirms
+```
+
+### View Cart
+```
+"Show me my cart"
+Agent displays cart contents with total
+```
+
+### Checkout
+```
+"Checkout with address 123 Main St, New York"
+Agent creates order and confirms shipping
+```
+
+### Payment
+```
+"Pay for my order with credit card"
+Agent processes payment with AP2 compliance
+```
+
+### Customer Support
+```
+"I want to return my order ORD-123"
+Agent initiates return process
+```
+
+## Example Agent Interactions
+
+### Shopping Journey
+
+1. **Browse Products**
+   ```
+   User: "Show me all shoes"
+   Agent: [Returns product list with descriptions]
+   ```
+
+2. **Search Specific Items**
+   ```
+   User: "Find me Nike shoes under $150"
+   Agent: [Filters and returns matching products]
+   ```
+
+3. **Add to Cart**
+   ```
+   User: "Add the first Nike shoe to my cart"
+   Agent: "Added Nike Air Max 270 to your cart"
+   ```
+
+4. **Review Cart**
+   ```
+   User: "What's in my cart?"
+   Agent: [Shows cart items with total]
+   ```
+
+5. **Checkout**
+   ```
+   User: "I want to checkout"
+   Agent: "What's your shipping address?"
+   User: "123 Main St, New York, NY 10001"
+   Agent: "Order created: ORD-12345"
+   ```
+
+6. **Pay**
+   ```
+   User: "How do I pay?"
+   Agent: "You can pay with credit card. Total is $160"
+   User: "Pay with card ending in 1234"
+   Agent: "Payment processed successfully"
+   ```
+
+7. **Track Order**
+   ```
+   User: "Where is my order?"
+   Agent: "Order ORD-12345 is being shipped"
+   ```
+
+8. **Returns**
+   ```
+   User: "I want to return order ORD-12345"
+   Agent: "Return initiated. You'll receive a refund"
+   ```
 
 ## Future Enhancements
 
+**Agent Integration:**
 - [ ] Real product images from backend
-- [ ] Shopping cart functionality
+- [ ] Cart counter badge showing live item count
+- [ ] Visual cart panel triggered by agent
+- [ ] Order status updates in UI
+- [ ] Image upload for visual product search
+- [ ] Voice input support
+- [ ] Multi-language support
+
+**UI Enhancements:**
 - [ ] User authentication
-- [ ] Payment integration
-- [ ] Order tracking
-- [ ] Product search and filters
 - [ ] Wishlist functionality
-- [ ] Product reviews and ratings
+- [ ] Product reviews display
+- [ ] Image zoom on product detail page
+- [ ] Quick action buttons ("Ask agent about this")
+- [ ] Order history page
+- [ ] Payment method management
 
 ## Troubleshooting
 
