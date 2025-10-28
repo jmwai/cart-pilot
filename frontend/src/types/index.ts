@@ -4,8 +4,27 @@ export interface Product {
   name: string;
   description?: string;
   picture?: string;
-  price: number;
+  product_image_url?: string;
+  price?: number;
   category?: string;
+  distance?: number;
+}
+
+export interface ProductListData {
+  type: "product_list";
+  products: Product[];
+}
+
+export interface A2AArtifact {
+  artifactId?: string;
+  name: string;
+  parts: A2APart[];
+}
+
+export interface A2APart {
+  kind: "text" | "data" | "file";
+  text?: string;
+  data?: any;
 }
 
 export interface CartItem {

@@ -1,12 +1,15 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
-import { ChatMessage } from '@/types';
+import { ChatMessage, Product } from '@/types';
 import { shoppingAPI } from '@/lib/shopping-api';
+import { parseA2AResponse } from '@/lib/a2a-parser';
+import ProductGrid from './ProductGrid';
 
 export default function Chatbox() {
   const [isOpen, setIsOpen] = useState(false);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [products, setProducts] = useState<Product[]>([]);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [isInitialized, setIsInitialized] = useState(false);
@@ -55,26 +58,46 @@ export default function Chatbox() {
     setInput('');
     addMessage('user', userMessage);
     setIsLoading(true);
+    setProducts([]); // Clear previous products
 
     try {
       const response = await shoppingAPI.sendMessage(userMessage);
       
-      // Extract agent response from A2A response structure
-      let assistantMessage = 'I received your message.';
+      // Parse A2A response to extract text and products
+      const { text, products: parsedProducts } = parseA2AResponse(response);
       
-      if (response.output?.parts) {
-        assistantMessage = response.output.parts.map((p: any) => p.text).join(' ');
-      } else if (response.error) {
-        assistantMessage = `Error: ${response.error}`;
+      // Add text message
+      if (text) {
+        addMessage('assistant', text);
+      } else {
+        addMessage('assistant', 'I received your message.');
       }
-
-      addMessage('assistant', assistantMessage);
+      
+      // Store products for rendering
+      if (parsedProducts.length > 0) {
+        setProducts(parsedProducts);
+      }
     } catch (error) {
       console.error('Error sending message:', error);
       addMessage('assistant', 'Sorry, I encountered an error. Please try again.');
     } finally {
       setIsLoading(false);
     }
+  };
+
+  const handleAddToCart = (productId: string) => {
+    // TODO: Implement add to cart functionality
+    console.log('Add to cart:', productId);
+    // For now, send a message to add the product to cart
+    const product = products.find(p => p.id === productId);
+    if (product) {
+      setInput(`Add ${product.name} to my cart`);
+    }
+  };
+
+  const handleViewDetails = (productId: string) => {
+    // TODO: Navigate to product details page
+    console.log('View details:', productId);
   };
 
   return (
@@ -117,7 +140,7 @@ export default function Chatbox() {
           </div>
 
           {/* Messages */}
-          <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-gray-50">
+          <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-gray-50 custom-scrollbar">
             {messages.map((msg, idx) => (
               <div
                 key={idx}
@@ -137,6 +160,18 @@ export default function Chatbox() {
                 </div>
               </div>
             ))}
+            
+            {/* Render products if available */}
+            {products.length > 0 && (
+              <div className="w-full">
+                <ProductGrid
+                  products={products}
+                  onAddToCart={handleAddToCart}
+                  onViewDetails={handleViewDetails}
+                />
+              </div>
+            )}
+            
             {isLoading && (
               <div className="flex justify-start">
                 <div className="bg-white text-gray-800 px-4 py-2 rounded-lg border border-gray-200">

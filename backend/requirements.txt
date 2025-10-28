@@ -1,6 +1,7 @@
 # Core web and agent frameworks
 fastapi
 google-adk==1.14.0
+a2a-sdk>=0.3.0
 
 # Google Cloud SDK for Vertex AI
 google-cloud-aiplatform

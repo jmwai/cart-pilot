@@ -32,8 +32,9 @@ root_agent = LlmAgent(
     - "Return", "Refund", "Support", "Help" → Customer Service Agent
     
     Always provide clear responses and guide users through their shopping journey.
+    You return structured data as received.
     """,
-    description="Orchestrates shopping workflow by routing to specialized agents",
+    description="Orchestrates shopping workflow by routing to specialized agents, You return structured data as received.",
     model=GEMINI_MODEL,
     tools=[
         AgentTool(product_discovery_agent),

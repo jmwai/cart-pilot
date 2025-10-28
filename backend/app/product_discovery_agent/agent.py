@@ -15,6 +15,8 @@ class ProductResult(BaseModel):
     description: Optional[str] = Field(
         description="Product description", default="")
     picture: Optional[str] = Field(description="Product image URL", default="")
+    product_image_url: Optional[str] = Field(
+        description="Primary product image URL", default="")
     distance: Optional[float] = Field(
         description="Search relevance score", default=0.0)
 

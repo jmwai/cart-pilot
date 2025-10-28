@@ -121,6 +121,7 @@ def text_vector_search(query: str) -> List[Dict[str, Any]]:
             out.append({
                 "id": row[0],
                 "name": row[1],
+                "description": row[2] or "",  # Include description
                 "picture": row[3],
                 "product_image_url": row[4],
                 "distance": float(row[5]),
@@ -157,6 +158,7 @@ def image_vector_search(image_bytes: bytes) -> List[Dict[str, Any]]:
             out.append({
                 "id": row[0],
                 "name": row[1],
+                "description": row[2] or "",  # Include description
                 "picture": row[3],
                 "product_image_url": row[4],
                 "distance": float(row[5]),
