@@ -1,7 +1,8 @@
 #!/bin/bash
 
-# Test script for product_discovery_agent
-# This script creates a session and queries the agent
+# Test script for product_discovery_agent and cart_agent
+# This script creates sessions, queries the product discovery agent,
+# extracts a product ID, adds it to cart, and retrieves cart contents
 
 APP_URL="http://localhost:8080"
 APP_NAME="product_discovery_agent"
@@ -9,7 +10,7 @@ USER_ID="user_123"
 SESSION_ID="session_$(date +%s)"
 
 echo "================================================"
-echo "Testing Product Discovery Agent"
+echo "Testing Product Discovery Agent & Cart Agent"
 echo "================================================"
 echo "App URL: $APP_URL"
 echo "App Name: $APP_NAME"
@@ -35,7 +36,7 @@ echo "----------------------------------------"
 echo "Query: 'Find me some running shoes'"
 echo ""
 
-curl -X POST \
+RESPONSE=$(curl -s -X POST \
     "$APP_URL/run_sse" \
     -H "Content-Type: application/json" \
     -d "{
@@ -49,37 +50,86 @@ curl -X POST \
             }]
         },
         \"streaming\": false
-    }" \
-    -w "\n"
+    }")
 
+echo "$RESPONSE"
+
+# Extract a product ID from the response (look for "id" field in the JSON)
+PRODUCT_ID=$(echo "$RESPONSE" | grep -o '"id":"[^"]*"' | head -1 | cut -d'"' -f4)
+
+echo ""
+echo "Extracted Product ID: $PRODUCT_ID"
 echo ""
 echo ""
 
-# # Step 3: Query again with a different question
-# echo "Step 3: Querying again with a different question..."
-# echo "----------------------------------------"
-# echo "Query: 'What products do you have?'"
-# echo ""
+# Step 3: Add product to cart
+if [ -n "$PRODUCT_ID" ]; then
+    echo "Step 3: Adding product to cart..."
+    echo "----------------------------------------"
+    echo "Adding product: $PRODUCT_ID"
+    echo ""
+    
+    CART_APP_NAME="cart_agent"
+    
+    # Create session for cart agent
+    echo "Creating session for cart agent..."
+    curl -X POST \
+        "$APP_URL/apps/$CART_APP_NAME/users/$USER_ID/sessions/$SESSION_ID" \
+        -H "Content-Type: application/json" \
+        -d '{"state": {"preferred_language": "English"}}' \
+        -w "\n"
+    
+    echo ""
+    echo ""
+    curl -X POST \
+        "$APP_URL/run_sse" \
+        -H "Content-Type: application/json" \
+        -d "{
+            \"app_name\": \"$CART_APP_NAME\",
+            \"user_id\": \"$USER_ID\",
+            \"session_id\": \"$SESSION_ID\",
+            \"new_message\": {
+                \"role\": \"user\",
+                \"parts\": [{
+                    \"text\": \"Add product $PRODUCT_ID to my cart with quantity 1\"
+                }]
+            },
+            \"streaming\": false
+        }" \
+        -w "\n"
+    
+    echo ""
+    echo ""
+    
+    # Step 4: Get cart contents
+    echo "Step 4: Retrieving cart contents..."
+    echo "----------------------------------------"
+    echo ""
+    
+    curl -X POST \
+        "$APP_URL/run_sse" \
+        -H "Content-Type: application/json" \
+        -d "{
+            \"app_name\": \"$CART_APP_NAME\",
+            \"user_id\": \"$USER_ID\",
+            \"session_id\": \"$SESSION_ID\",
+            \"new_message\": {
+                \"role\": \"user\",
+                \"parts\": [{
+                    \"text\": \"Show me my cart\"
+                }]
+            },
+            \"streaming\": false
+        }" \
+        -w "\n"
+    
+    echo ""
+    echo ""
+else
+    echo "No product ID found, skipping cart operations"
+    echo ""
+fi
 
-# curl -X POST \
-#     "$APP_URL/run_sse" \
-#     -H "Content-Type: application/json" \
-#     -d "{
-#         \"app_name\": \"$APP_NAME\",
-#         \"user_id\": \"$USER_ID\",
-#         \"session_id\": \"$SESSION_ID\",
-#         \"new_message\": {
-#             \"role\": \"user\",
-#             \"parts\": [{
-#                 \"text\": \"What products do you have?\"
-#             }]
-#         },
-#         \"streaming\": false
-#     }" \
-#     -w "\n"
-
-# echo ""
-# echo "================================================"
-# echo "Test complete!"
-# echo "================================================"
-
+echo "================================================"
+echo "Test complete!"
+echo "================================================"

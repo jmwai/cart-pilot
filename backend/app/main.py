@@ -99,3 +99,103 @@ def healthz() -> Dict[str, Any]:
     if not health_check():
         raise HTTPException(status_code=500, detail="Database is not healthy")
     return {"status": "ok", "message": "Agents Gateway is healthy"}
+
+
+@app.get("/.well-known/agent-card.json")
+def agent_card() -> Dict[str, Any]:
+    """
+    Returns the agent card describing the shopping assistant capabilities.
+    This is used by A2A clients to discover agent capabilities.
+    """
+    return {
+        "name": "Shopping Assistant",
+        "description": "AI-powered shopping assistant that helps you discover products, manage your cart, and complete purchases",
+        "url": "http://localhost:8080/",
+        "version": "1.0.0",
+        "capabilities": {
+            "streaming": True,
+            "pushNotifications": False,
+            "stateTransitionHistory": False
+        },
+        "defaultInputModes": [
+            "text",
+            "text/plain"
+        ],
+        "defaultOutputModes": [
+            "text",
+            "text/plain"
+        ],
+        "skills": [
+            {
+                "id": "discover_products",
+                "name": "Product Discovery",
+                "description": "Search and discover products using natural language queries",
+                "tags": [
+                    "Search products",
+                    "Find items"
+                ],
+                "examples": [
+                    "Find me some running shoes",
+                    "Show me blue t-shirts",
+                    "What kitchen appliances do you have?"
+                ]
+            },
+            {
+                "id": "manage_cart",
+                "name": "Cart Management",
+                "description": "Add items to cart, view cart contents, update quantities, and remove items",
+                "tags": [
+                    "Shopping cart",
+                    "Add to cart"
+                ],
+                "examples": [
+                    "Add running shoes to my cart",
+                    "Show me my cart",
+                    "Remove item from cart",
+                    "Clear my cart"
+                ]
+            },
+            {
+                "id": "checkout",
+                "name": "Checkout",
+                "description": "Create orders from cart and manage order status",
+                "tags": [
+                    "Place order",
+                    "Checkout"
+                ],
+                "examples": [
+                    "I want to checkout",
+                    "Place my order",
+                    "What's the status of my order?"
+                ]
+            },
+            {
+                "id": "pay",
+                "name": "Payment Processing",
+                "description": "Process payments for orders with AP2 compliance",
+                "tags": [
+                    "Pay",
+                    "Payment"
+                ],
+                "examples": [
+                    "I want to pay for my order",
+                    "Process my payment"
+                ]
+            },
+            {
+                "id": "customer_service",
+                "name": "Customer Service",
+                "description": "Handle returns, refunds, and customer inquiries",
+                "tags": [
+                    "Returns",
+                    "Refunds",
+                    "Support"
+                ],
+                "examples": [
+                    "I want to return an item",
+                    "Get a refund for my order",
+                    "How do I track my package?"
+                ]
+            }
+        ]
+    }

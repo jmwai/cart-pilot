@@ -105,15 +105,15 @@ def text_vector_search(query: str) -> List[Dict[str, Any]]:
 
     with get_db_session() as db:
         # Use raw SQL for pgvector distance calculation
+        # Embedding the vector literal directly (safe since it's from the embedding model)
         result = db.execute(
             sql_text(
-                "SELECT id, name, description, picture, "
-                "COALESCE(product_image_url, picture) as product_image_url, "
-                "(product_embedding <=> :vec::vector) AS distance "
-                "FROM catalog_items "
-                "ORDER BY distance ASC LIMIT 10"
-            ),
-            {"vec": qvec}
+                f"SELECT id, name, description, picture, "
+                f"COALESCE(product_image_url, picture) as product_image_url, "
+                f"(product_embedding <=> '{qvec}'::vector) AS distance "
+                f"FROM catalog_items "
+                f"ORDER BY distance ASC LIMIT 10"
+            )
         )
 
         out = []
@@ -141,15 +141,15 @@ def image_vector_search(image_bytes: bytes) -> List[Dict[str, Any]]:
 
     with get_db_session() as db:
         # Use raw SQL for pgvector distance calculation
+        # Embedding the vector literal directly (safe since it's from the embedding model)
         result = db.execute(
             sql_text(
-                "SELECT id, name, description, picture, "
-                "COALESCE(product_image_url, picture) as product_image_url, "
-                "(product_image_embedding <=> :vec::vector) AS distance "
-                "FROM catalog_items "
-                "ORDER BY distance ASC LIMIT 10"
-            ),
-            {"vec": qvec}
+                f"SELECT id, name, description, picture, "
+                f"COALESCE(product_image_url, picture) as product_image_url, "
+                f"(product_image_embedding <=> '{qvec}'::vector) AS distance "
+                f"FROM catalog_items "
+                f"ORDER BY distance ASC LIMIT 10"
+            )
         )
 
         out = []
