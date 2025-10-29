@@ -1,9 +1,11 @@
 import { notFound } from 'next/navigation';
 import Link from 'next/link';
-import { getProductById, getRelatedProducts } from '@/lib/mock-products';
+import { shoppingAPI } from '@/lib/shopping-api';
 import Header from '@/components/Header';
 import Footer from '@/components/Footer';
 import Chatbox from '@/components/Chatbox';
+import ProductImage from '@/components/ProductImage';
+import { Product } from '@/types';
 
 interface ProductPageProps {
   params: {
@@ -11,9 +13,32 @@ interface ProductPageProps {
   };
 }
 
-export default function ProductPage({ params }: ProductPageProps) {
-  const product = getProductById(params.id);
-  const relatedProducts = getRelatedProducts(params.id, 4);
+async function getProduct(id: string): Promise<Product | null> {
+  try {
+    return await shoppingAPI.getProductById(id);
+  } catch (error) {
+    console.error(`Failed to fetch product ${id}:`, error);
+    return null;
+  }
+}
+
+async function getRelatedProducts(excludeId: string, limit: number = 4): Promise<Product[]> {
+  try {
+    const allProducts = await shoppingAPI.getProducts();
+    // Filter out the current product and get random selection
+    const filtered = allProducts.filter(p => p.id !== excludeId);
+    // Shuffle and take limit
+    const shuffled = filtered.sort(() => Math.random() - 0.5);
+    return shuffled.slice(0, limit);
+  } catch (error) {
+    console.error('Failed to fetch related products:', error);
+    return [];
+  }
+}
+
+export default async function ProductPage({ params }: ProductPageProps) {
+  const product = await getProduct(params.id);
+  const relatedProducts = await getRelatedProducts(params.id, 4);
 
   if (!product) {
     notFound();
@@ -24,7 +49,7 @@ export default function ProductPage({ params }: ProductPageProps) {
       <Header />
       
       <main className="flex-1">
-        {/* Breadcrumb */}
+            {/* Breadcrumb */}
         <div className="bg-gray-50 py-4">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
             <nav className="text-sm">
@@ -32,7 +57,7 @@ export default function ProductPage({ params }: ProductPageProps) {
                 Home
               </Link>
               <span className="mx-2 text-gray-400">/</span>
-              <span className="text-gray-900">{product.category || 'Products'}</span>
+              <span className="text-gray-900">Products</span>
               <span className="mx-2 text-gray-400">/</span>
               <span className="text-gray-900">{product.name}</span>
             </nav>
@@ -45,22 +70,24 @@ export default function ProductPage({ params }: ProductPageProps) {
             {/* Product Images */}
             <div>
               {/* Main Image */}
-              <div className="aspect-square bg-gray-100 rounded-lg mb-4 flex items-center justify-center">
-                <div className="w-full h-full bg-gradient-to-br from-gray-200 to-gray-300 flex items-center justify-center">
-                  <span className="text-gray-400 text-lg">Product Image</span>
-                </div>
+              <div className="aspect-square bg-gray-100 rounded-lg mb-4 relative overflow-hidden">
+                <ProductImage
+                  src={product.product_image_url || product.picture}
+                  alt={product.name}
+                />
               </div>
 
-              {/* Thumbnails */}
+              {/* Thumbnails - Show same image as thumbnail for now */}
               <div className="grid grid-cols-4 gap-4">
                 {[1, 2, 3, 4].map((i) => (
                   <div
                     key={i}
-                    className="aspect-square bg-gray-100 rounded-lg flex items-center justify-center border-2 border-transparent hover:border-blue-600 transition-colors cursor-pointer"
+                    className="aspect-square bg-gray-100 rounded-lg relative overflow-hidden border-2 border-transparent hover:border-blue-600 transition-colors cursor-pointer"
                   >
-                    <div className="w-full h-full bg-gradient-to-br from-gray-200 to-gray-300 flex items-center justify-center">
-                      <span className="text-gray-400 text-xs">Img {i}</span>
-                    </div>
+                    <ProductImage
+                      src={product.product_image_url || product.picture}
+                      alt={`${product.name} thumbnail ${i}`}
+                    />
                   </div>
                 ))}
               </div>
@@ -68,15 +95,14 @@ export default function ProductPage({ params }: ProductPageProps) {
 
             {/* Product Info */}
             <div>
-              <div className="text-sm text-gray-600 mb-2">
-                {product.category || "Men's Shoes"}
-              </div>
               <h1 className="text-4xl font-bold text-gray-900 mb-4">
                 {product.name}
               </h1>
-              <p className="text-3xl font-bold text-gray-900 mb-6">
-                ${product.price}
-              </p>
+              {product.price !== null && product.price !== undefined && (
+                <p className="text-3xl font-bold text-gray-900 mb-6">
+                  ${product.price.toFixed(2)}
+                </p>
+              )}
 
               {/* Description */}
               <div className="mb-8">
@@ -131,18 +157,21 @@ export default function ProductPage({ params }: ProductPageProps) {
                   href={`/products/${relatedProduct.id}`}
                   className="group bg-white rounded-lg overflow-hidden shadow-sm hover:shadow-lg transition-shadow"
                 >
-                  <div className="aspect-square bg-gray-100 flex items-center justify-center">
-                    <div className="w-full h-full bg-gradient-to-br from-gray-200 to-gray-300 flex items-center justify-center">
-                      <span className="text-gray-400 text-xs">Image</span>
-                    </div>
+                  <div className="aspect-square bg-gray-100 relative overflow-hidden">
+                    <ProductImage
+                      src={relatedProduct.product_image_url || relatedProduct.picture}
+                      alt={relatedProduct.name}
+                    />
                   </div>
                   <div className="p-4">
                     <h3 className="font-semibold text-gray-900 mb-1 group-hover:text-blue-600 transition-colors">
                       {relatedProduct.name}
                     </h3>
-                    <p className="text-lg font-bold text-gray-900">
-                      ${relatedProduct.price}
-                    </p>
+                    {relatedProduct.price !== null && relatedProduct.price !== undefined && (
+                      <p className="text-lg font-bold text-gray-900">
+                        ${relatedProduct.price.toFixed(2)}
+                      </p>
+                    )}
                   </div>
                 </Link>
               ))}
