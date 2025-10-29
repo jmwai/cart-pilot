@@ -3,7 +3,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { ChatMessage, Product, CartItem } from '@/types';
 import { shoppingAPI } from '@/lib/shopping-api';
-import { parseA2AResponse } from '@/lib/a2a-parser';
+import { parseA2AResponse, parseStreamingEvent } from '@/lib/a2a-parser';
 import ProductGrid from './ProductGrid';
 import CartDisplay from './CartDisplay';
 
@@ -13,8 +13,12 @@ interface MessageWithArtifacts extends ChatMessage {
 }
 
 export default function Chatbox() {
+  // Track if component has mounted (client-side only)
+  const [mounted, setMounted] = useState(false);
+  
   // On desktop, always open. On mobile/tablet, use toggle state
-  const [isOpen, setIsOpen] = useState(true);
+  // Initialize as false to match server render, then update on mount
+  const [isOpen, setIsOpen] = useState(false);
   const [messages, setMessages] = useState<MessageWithArtifacts[]>([]);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -26,7 +30,11 @@ export default function Chatbox() {
   // Check if we're on mobile/tablet
   const [isMobile, setIsMobile] = useState(false);
   
+  // Handle mounting and mobile detection
   useEffect(() => {
+    // Mark as mounted
+    setMounted(true);
+    
     const checkMobile = () => {
       const mobile = window.innerWidth < 1024;
       setIsMobile(mobile);
@@ -93,28 +101,198 @@ export default function Chatbox() {
     addMessage('user', userMessage);
     setLoadingMessage(getContextualLoadingMessage(userMessage));
     setIsLoading(true);
+    
+    // Initialize streaming message state
+    let streamingText = '';
+    let streamingProducts: Product[] | undefined = undefined;
+    let streamingCart: CartItem[] | undefined = undefined;
+    let assistantMessageIndex = -1;
+
+    // Helper function to safely extract status message
+    const extractStatusMessage = (data: any): string => {
+      if (!data) return '';
+      if (typeof data === 'string') return data;
+      if (data && typeof data === 'object') {
+        // Try to extract message from object
+        if (data.message !== undefined) {
+          if (typeof data.message === 'string') return data.message;
+          if (typeof data.message === 'object') {
+            // If message is an object, try to extract text from it
+            return data.message.text || data.message.value || String(data.message || '');
+          }
+          return String(data.message);
+        }
+        if (data.state) return String(data.state);
+        if (data.text) return String(data.text);
+        // If it's just an object with no clear message, return empty string
+        return '';
+      }
+      return String(data || '');
+    };
 
     try {
-      const response = await shoppingAPI.sendMessage(userMessage);
+      // Use streaming method
+      for await (const event of shoppingAPI.sendMessageStream(userMessage)) {
+        const parsedEvent = parseStreamingEvent(event);
+        
+        if (!parsedEvent) continue;
+        
+        try {
+          switch (parsedEvent.type) {
+            case 'text':
+              // Accumulate text incrementally
+              // Ensure text is a string
+              const textChunk = typeof parsedEvent.data?.text === 'string' 
+                ? parsedEvent.data.text 
+                : String(parsedEvent.data?.text || '');
+              streamingText += textChunk;
+              
+              // Ensure streamingText is always a string before setting state
+              const safeText = typeof streamingText === 'string' ? streamingText : String(streamingText || '');
+              
+              // Update or create assistant message in real-time
+              setMessages(prev => {
+                const updated = [...prev];
+                if (assistantMessageIndex >= 0 && updated[assistantMessageIndex]) {
+                  // Update existing message
+                  updated[assistantMessageIndex] = {
+                    ...updated[assistantMessageIndex],
+                    content: safeText,
+                    products: streamingProducts,
+                    cart: streamingCart
+                  };
+                } else {
+                  // Create new assistant message
+                  assistantMessageIndex = updated.length;
+                  updated.push({
+                    role: 'assistant',
+                    content: safeText,
+                    timestamp: new Date(),
+                    products: streamingProducts,
+                    cart: streamingCart
+                  });
+                }
+                return updated;
+              });
+              break;
+              
+            case 'products':
+              // Update products immediately
+              streamingProducts = parsedEvent.data.products;
+              
+              setMessages(prev => {
+                const updated = [...prev];
+                if (assistantMessageIndex >= 0 && updated[assistantMessageIndex]) {
+                  updated[assistantMessageIndex] = {
+                    ...updated[assistantMessageIndex],
+                    products: streamingProducts,
+                    cart: streamingCart
+                  };
+                } else {
+                  // Create message if it doesn't exist yet
+                  assistantMessageIndex = updated.length;
+                  updated.push({
+                    role: 'assistant',
+                    content: streamingText,
+                    timestamp: new Date(),
+                    products: streamingProducts,
+                    cart: streamingCart
+                  });
+                }
+                return updated;
+              });
+              break;
+              
+            case 'cart':
+              // Update cart immediately
+              streamingCart = parsedEvent.data.items;
+              
+              setMessages(prev => {
+                const updated = [...prev];
+                if (assistantMessageIndex >= 0 && updated[assistantMessageIndex]) {
+                  updated[assistantMessageIndex] = {
+                    ...updated[assistantMessageIndex],
+                    cart: streamingCart,
+                    products: streamingProducts
+                  };
+                } else {
+                  // Create message if it doesn't exist yet
+                  assistantMessageIndex = updated.length;
+                  updated.push({
+                    role: 'assistant',
+                    content: streamingText,
+                    timestamp: new Date(),
+                    products: streamingProducts,
+                    cart: streamingCart
+                  });
+                }
+                return updated;
+              });
+              break;
+              
+            case 'status':
+              // Update loading message if provided - ensure it's a string
+              const statusMsg2 = extractStatusMessage(parsedEvent.data);
+              if (statusMsg2 && typeof statusMsg2 === 'string') {
+                setLoadingMessage(statusMsg2);
+              } else {
+                // Fallback: ensure we never set an object
+                setLoadingMessage(String(statusMsg2 || ''));
+              }
+              break;
+              
+            case 'complete':
+              // Finalize message - ensure final state is set
+              setIsLoading(false);
+              setMessages(prev => {
+                const updated = [...prev];
+                if (assistantMessageIndex >= 0 && updated[assistantMessageIndex]) {
+                  // Ensure final state is correct
+                  const finalText = typeof streamingText === 'string' ? streamingText : String(streamingText || '');
+                  updated[assistantMessageIndex] = {
+                    ...updated[assistantMessageIndex],
+                    content: finalText || 'I received your message.',
+                    products: streamingProducts,
+                    cart: streamingCart
+                  };
+                } else {
+                  // Create final message if somehow missing
+                  const finalText = typeof streamingText === 'string' ? streamingText : String(streamingText || '');
+                  updated.push({
+                    role: 'assistant',
+                    content: finalText || 'I received your message.',
+                    timestamp: new Date(),
+                    products: streamingProducts,
+                    cart: streamingCart
+                  });
+                }
+                return updated;
+              });
+              break;
+          }
+        } catch (eventError) {
+          // Handle individual event processing errors
+          console.error('Error processing streaming event:', eventError);
+          // Continue processing other events
+        }
+      }
       
-      // Parse A2A response to extract text, products, and cart
-      const { text, products: parsedProducts, cart: parsedCart } = parseA2AResponse(response);
+      // Ensure loading is stopped even if no complete event received
+      setIsLoading(false);
       
-      // Add assistant message with artifacts attached
-      if (text || parsedProducts.length > 0 || parsedCart) {
+    } catch (error) {
+      console.error('Error in streaming:', error);
+      // Save partial results if available
+      if (streamingText || streamingProducts || streamingCart) {
         addMessage(
-          'assistant', 
-          text || 'I received your message.',
-          parsedProducts.length > 0 ? parsedProducts : undefined,
-          parsedCart
+          'assistant',
+          streamingText || 'I received your message.',
+          streamingProducts,
+          streamingCart
         );
       } else {
-        addMessage('assistant', 'I received your message.');
+        addMessage('assistant', 'Sorry, I encountered an error. Please try again.');
       }
-    } catch (error) {
-      console.error('Error sending message:', error);
-      addMessage('assistant', 'Sorry, I encountered an error. Please try again.');
-    } finally {
       setIsLoading(false);
     }
   };
@@ -200,37 +378,188 @@ export default function Chatbox() {
   const handlePromptClick = async (prompt: string) => {
     if (isLoading || !isInitialized) return;
     
-    // Set input and send immediately
+    // Set input and send immediately using streaming
     setInput(prompt);
     
     // Add user message
     addMessage('user', prompt);
     setLoadingMessage(getContextualLoadingMessage(prompt));
     setIsLoading(true);
+    
+    // Initialize streaming message state
+    let streamingText = '';
+    let streamingProducts: Product[] | undefined = undefined;
+    let streamingCart: CartItem[] | undefined = undefined;
+    let assistantMessageIndex = -1;
+
+    // Helper function to safely extract status message
+    const extractStatusMessage = (data: any): string => {
+      if (!data) return '';
+      if (typeof data === 'string') return data;
+      if (data && typeof data === 'object') {
+        // Try to extract message from object
+        if (data.message !== undefined) {
+          if (typeof data.message === 'string') return data.message;
+          if (typeof data.message === 'object') {
+            // If message is an object, try to extract text from it
+            return data.message.text || data.message.value || String(data.message || '');
+          }
+          return String(data.message);
+        }
+        if (data.state) return String(data.state);
+        if (data.text) return String(data.text);
+        // If it's just an object with no clear message, return empty string
+        return '';
+      }
+      return String(data || '');
+    };
 
     try {
-      const response = await shoppingAPI.sendMessage(prompt);
-      
-      // Parse A2A response to extract text, products, and cart
-      const { text, products: parsedProducts, cart: parsedCart } = parseA2AResponse(response);
-      
-      // Add assistant message with artifacts attached
-      if (text || parsedProducts.length > 0 || parsedCart) {
-        addMessage(
-          'assistant', 
-          text || 'I received your message.',
-          parsedProducts.length > 0 ? parsedProducts : undefined,
-          parsedCart
-        );
-      } else {
-        addMessage('assistant', 'I received your message.');
+      // Use streaming method (same as handleSend)
+      for await (const event of shoppingAPI.sendMessageStream(prompt)) {
+        const parsedEvent = parseStreamingEvent(event);
+        
+        if (!parsedEvent) continue;
+        
+        try {
+          switch (parsedEvent.type) {
+            case 'text':
+              // Ensure text is always a string
+              const promptTextChunk = typeof parsedEvent.data?.text === 'string' 
+                ? parsedEvent.data.text 
+                : String(parsedEvent.data?.text || '');
+              streamingText += promptTextChunk;
+              
+              // Ensure streamingText is always a string before setting state
+              const promptSafeText = typeof streamingText === 'string' ? streamingText : String(streamingText || '');
+              
+              setMessages(prev => {
+                const updated = [...prev];
+                if (assistantMessageIndex >= 0 && updated[assistantMessageIndex]) {
+                  updated[assistantMessageIndex] = {
+                    ...updated[assistantMessageIndex],
+                    content: promptSafeText,
+                    products: streamingProducts,
+                    cart: streamingCart
+                  };
+                } else {
+                  assistantMessageIndex = updated.length;
+                  updated.push({
+                    role: 'assistant',
+                    content: promptSafeText,
+                    timestamp: new Date(),
+                    products: streamingProducts,
+                    cart: streamingCart
+                  });
+                }
+                return updated;
+              });
+              break;
+              
+            case 'products':
+              streamingProducts = parsedEvent.data.products;
+              setMessages(prev => {
+                const updated = [...prev];
+                if (assistantMessageIndex >= 0 && updated[assistantMessageIndex]) {
+                  updated[assistantMessageIndex] = {
+                    ...updated[assistantMessageIndex],
+                    products: streamingProducts,
+                    cart: streamingCart
+                  };
+                } else {
+                  assistantMessageIndex = updated.length;
+                  updated.push({
+                    role: 'assistant',
+                    content: streamingText,
+                    timestamp: new Date(),
+                    products: streamingProducts,
+                    cart: streamingCart
+                  });
+                }
+                return updated;
+              });
+              break;
+              
+            case 'cart':
+              streamingCart = parsedEvent.data.items;
+              setMessages(prev => {
+                const updated = [...prev];
+                if (assistantMessageIndex >= 0 && updated[assistantMessageIndex]) {
+                  updated[assistantMessageIndex] = {
+                    ...updated[assistantMessageIndex],
+                    cart: streamingCart,
+                    products: streamingProducts
+                  };
+                } else {
+                  assistantMessageIndex = updated.length;
+                  updated.push({
+                    role: 'assistant',
+                    content: streamingText,
+                    timestamp: new Date(),
+                    products: streamingProducts,
+                    cart: streamingCart
+                  });
+                }
+                return updated;
+              });
+              break;
+              
+            case 'status':
+              // Update loading message if provided - ensure it's a string
+              const statusMsg = extractStatusMessage(parsedEvent.data);
+              if (statusMsg && typeof statusMsg === 'string') {
+                setLoadingMessage(statusMsg);
+              } else {
+                // Fallback: ensure we never set an object
+                setLoadingMessage(String(statusMsg || ''));
+              }
+              break;
+              setMessages(prev => {
+                const updated = [...prev];
+                if (assistantMessageIndex >= 0 && updated[assistantMessageIndex]) {
+                  const promptFinalText = typeof streamingText === 'string' ? streamingText : String(streamingText || '');
+                  updated[assistantMessageIndex] = {
+                    ...updated[assistantMessageIndex],
+                    content: promptFinalText || 'I received your message.',
+                    products: streamingProducts,
+                    cart: streamingCart
+                  };
+                } else {
+                  const promptFinalText = typeof streamingText === 'string' ? streamingText : String(streamingText || '');
+                  updated.push({
+                    role: 'assistant',
+                    content: promptFinalText || 'I received your message.',
+                    timestamp: new Date(),
+                    products: streamingProducts,
+                    cart: streamingCart
+                  });
+                }
+                return updated;
+              });
+              break;
+          }
+        } catch (eventError) {
+          console.error('Error processing streaming event:', eventError);
+        }
       }
-    } catch (error) {
-      console.error('Error sending message:', error);
-      addMessage('assistant', 'Sorry, I encountered an error. Please try again.');
-    } finally {
+      
       setIsLoading(false);
       setInput(''); // Clear input after sending
+      
+    } catch (error) {
+      console.error('Error in streaming:', error);
+      if (streamingText || streamingProducts || streamingCart) {
+        addMessage(
+          'assistant',
+          streamingText || 'I received your message.',
+          streamingProducts,
+          streamingCart
+        );
+      } else {
+      addMessage('assistant', 'Sorry, I encountered an error. Please try again.');
+      }
+      setIsLoading(false);
+      setInput(''); // Clear input after error
     }
   };
 
@@ -243,6 +572,11 @@ export default function Chatbox() {
     'Find hiking boots',
     'Show me athletic shoes',
   ];
+
+  // Don't render until mounted to prevent hydration mismatch
+  if (!mounted) {
+    return null;
+  }
 
   return (
     <>
@@ -282,15 +616,15 @@ export default function Chatbox() {
               <span className="font-semibold">Shopping Assistant</span>
             </div>
             {isMobile && (
-              <button
-                onClick={() => setIsOpen(false)}
-                className="hover:bg-blue-700 rounded p-1 transition-colors"
-                aria-label="Close chat"
-              >
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                </svg>
-              </button>
+            <button
+              onClick={() => setIsOpen(false)}
+              className="hover:bg-blue-700 rounded p-1 transition-colors"
+              aria-label="Close chat"
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
             )}
           </div>
 
@@ -299,21 +633,23 @@ export default function Chatbox() {
             {messages.map((msg, idx) => (
               <div key={idx} className="space-y-2">
                 {/* Message bubble */}
+              <div
+                className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
+              >
                 <div
-                  className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
+                  className={`max-w-[80%] px-4 py-2 rounded-lg ${
+                    msg.role === 'user'
+                      ? 'bg-blue-600 text-white'
+                      : 'bg-white text-gray-800 border border-gray-200'
+                  }`}
                 >
-                  <div
-                    className={`max-w-[80%] px-4 py-2 rounded-lg ${
-                      msg.role === 'user'
-                        ? 'bg-blue-600 text-white'
-                        : 'bg-white text-gray-800 border border-gray-200'
-                    }`}
-                  >
-                    <p className="text-sm whitespace-pre-wrap">{msg.content}</p>
-                    <p className="text-xs mt-1 opacity-70">
-                      {msg.timestamp.toLocaleTimeString()}
-                    </p>
-                  </div>
+                  <p className="text-sm whitespace-pre-wrap">
+                    {typeof msg.content === 'string' ? msg.content : String(msg.content || '')}
+                  </p>
+                  <p className="text-xs mt-1 opacity-70">
+                    {msg.timestamp.toLocaleTimeString()}
+                  </p>
+                </div>
                 </div>
                 
                 {/* Render products if available */}
@@ -367,7 +703,21 @@ export default function Chatbox() {
                     <div className="w-2 h-2 bg-gray-400 rounded-full typing-dot"></div>
                     <div className="w-2 h-2 bg-gray-400 rounded-full typing-dot"></div>
                   </div>
-                  <p className="text-sm">{loadingMessage}</p>
+                  <p className="text-sm">
+                    {(() => {
+                      // Extra defensive check to ensure we never render an object
+                      if (typeof loadingMessage === 'string') {
+                        return loadingMessage;
+                      }
+                      const msgObj = loadingMessage as any;
+                      if (msgObj && typeof msgObj === 'object') {
+                        // If it's an object, try to extract a string
+                        const extracted = msgObj.message || msgObj.text || msgObj.state || '';
+                        return typeof extracted === 'string' ? extracted : String(extracted || '');
+                      }
+                      return String(loadingMessage || '');
+                    })()}
+                  </p>
                 </div>
               </div>
             )}

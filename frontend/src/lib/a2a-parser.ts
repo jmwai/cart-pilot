@@ -1,6 +1,15 @@
 import { Product, ProductListData, CartItem, CartData } from '@/types';
 
 /**
+ * Streaming event from A2A protocol
+ */
+export interface StreamingEvent {
+  type: 'text' | 'products' | 'cart' | 'status' | 'complete';
+  data: any;
+  isIncremental: boolean;
+}
+
+/**
  * Parsed A2A response containing text, products, and cart data
  */
 export interface ParsedA2AResponse {
@@ -94,5 +103,169 @@ export function parseA2AResponse(response: any): ParsedA2AResponse {
     products, 
     cart 
   };
+}
+
+/**
+ * Parse streaming A2A events incrementally
+ * @param event - The A2A streaming event
+ * @returns StreamingEvent object or null if event type is not recognized
+ */
+export function parseStreamingEvent(event: any): StreamingEvent | null {
+  // Skip if event is null or undefined
+  if (!event || typeof event !== 'object') {
+    return null;
+  }
+  
+  // Handle task events
+  if (event.kind === 'task') {
+    return { 
+      type: 'status', 
+      data: { taskId: event.id }, 
+      isIncremental: true 
+    };
+  }
+  
+  // Handle status updates
+  if (event.kind === 'status-update') {
+    // Extract and ensure message is a string
+    let statusMessage = '';
+    if (event.status?.message) {
+      statusMessage = typeof event.status.message === 'string' 
+        ? event.status.message 
+        : String(event.status.message || '');
+    } else if (event.message) {
+      statusMessage = typeof event.message === 'string' 
+        ? event.message 
+        : String(event.message || '');
+    }
+    
+    return { 
+      type: 'status', 
+      data: { 
+        state: event.status?.state || event.state,
+        message: statusMessage
+      },
+      isIncremental: true 
+    };
+  }
+  
+  // Handle artifact updates
+  if (event.kind === 'artifact-update') {
+    const artifact = event.artifact || event;
+    // Handle different artifact structures
+    const parts = artifact.parts || artifact.output?.parts || artifact.output || [];
+    
+    // If parts is not an array, make it an array
+    const partsArray = Array.isArray(parts) ? parts : [parts];
+    
+    for (const part of partsArray) {
+      if (!part || typeof part !== 'object') continue;
+      
+      // Text artifact - handle multiple formats
+      if (part.kind === 'text' || part.text !== undefined) {
+        // Ensure text is a string, not an object
+        let textValue = '';
+        
+        if (typeof part.text === 'string') {
+          textValue = part.text;
+        } else if (part.root && typeof part.root === 'object') {
+          // Check root property (TextPart structure)
+          if (typeof part.root.text === 'string') {
+            textValue = part.root.text;
+          } else {
+            textValue = String(part.root.text || '');
+          }
+        } else if (part.text && typeof part.text === 'object') {
+          // If text is an object, try to extract text from nested properties
+          textValue = part.text.text || part.text.value || String(part.text || '');
+        } else {
+          textValue = String(part.text || '');
+        }
+        
+        // Only return if we have actual text content
+        if (textValue) {
+          return {
+            type: 'text',
+            data: { text: textValue },
+            isIncremental: artifact.incremental !== false
+          };
+        }
+      }
+      
+      // Products artifact
+      if (part.kind === 'data' && artifact.name === 'products') {
+        try {
+          const data = part.data as ProductListData;
+          if (data?.type === 'product_list' && Array.isArray(data.products)) {
+            return {
+              type: 'products',
+              data: { products: data.products.map(formatProduct) },
+              isIncremental: artifact.incremental !== false
+            };
+          }
+        } catch (error) {
+          console.error('Error parsing product data:', error);
+        }
+      }
+      
+      // Cart artifact
+      if (part.kind === 'data' && artifact.name === 'cart') {
+        try {
+          const data = part.data as CartData;
+          if (data?.type === 'cart' && Array.isArray(data.items)) {
+            return {
+              type: 'cart',
+              data: { 
+                items: data.items.map(formatCartItem),
+                total_items: data.total_items || 0,
+                subtotal: data.subtotal || 0
+              },
+              isIncremental: artifact.incremental !== false
+            };
+          }
+        } catch (error) {
+          console.error('Error parsing cart data:', error);
+        }
+      }
+    }
+  }
+  
+  // Handle completion events
+  if (event.kind === 'task-complete' || event.kind === 'complete' || event.kind === 'done') {
+    return {
+      type: 'complete',
+      data: {},
+      isIncremental: false
+    };
+  }
+  
+  // Handle message events (if they come through as-is)
+  if (event.kind === 'message' && event.parts) {
+    // Extract text from message parts
+    const partsArray = Array.isArray(event.parts) ? event.parts : [event.parts];
+    for (const part of partsArray) {
+      if (part.kind === 'text' && typeof part.text === 'string') {
+        return {
+          type: 'text',
+          data: { text: part.text },
+          isIncremental: true
+        };
+      }
+    }
+  }
+  
+  // If we don't recognize the event, log it for debugging but don't crash
+  if (process.env.NODE_ENV === 'development') {
+    console.debug('Unrecognized streaming event:', event);
+  }
+  
+  return null;
+}
+
+/**
+ * Accumulate streaming text chunks
+ */
+export function accumulateText(currentText: string, newChunk: string): string {
+  return currentText + newChunk;
 }
 

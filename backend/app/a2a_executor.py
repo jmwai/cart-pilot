@@ -110,52 +110,22 @@ class ShoppingAgentExecutor(AgentExecutor):
                 role='user', parts=[types.Part.from_text(text=query)]
             )
 
-            # Process with ADK agent
-            response_text = ''
-            cart_data = None
+            # Track accumulated text and artifacts
+            accumulated_text = ''
+            products_sent = False
+            cart_sent = False
 
-            async for event in self.runner.run_async(
-                user_id=user_id, session_id=session.id, new_message=content
-            ):
-                if (
-                    event.is_final_response()
-                    and event.content
-                    and event.content.parts
-                ):
-                    for part in event.content.parts:
-                        if hasattr(part, 'text') and part.text:
-                            response_text += part.text + '\n'
-                        elif hasattr(part, 'function_call'):
-                            # Function calls are handled internally by ADK
-                            pass
-
-            # After agent execution, get updated session to access state
-            updated_session = await self.runner.session_service.get_session(
-                app_name=self.agent.name,
-                user_id=user_id,
-                session_id=session.id
-            )
-
-            # Extract products from session state
-            session_state = updated_session.state if hasattr(
-                updated_session, 'state') else {}
-            current_results = session_state.get("current_results", [])
-
-            # Format products with all required fields
-            formatted_products = []
-            if current_results:
-                for product in current_results:
-                    # Calculate price in dollars from price_usd_units (cents)
+            # Helper function to format products
+            def format_products(products_list):
+                formatted = []
+                for product in products_list:
                     price_usd_units = product.get("price_usd_units")
                     price = 0.0
                     if price_usd_units:
                         price = float(price_usd_units) / 100.0
-
-                    # Ensure image URL is always present
                     image_url = product.get(
                         "product_image_url") or product.get("picture") or ""
-
-                    formatted_products.append({
+                    formatted.append({
                         "id": product.get("id", ""),
                         "name": product.get("name", ""),
                         "description": product.get("description", ""),
@@ -164,49 +134,132 @@ class ShoppingAgentExecutor(AgentExecutor):
                         "price_usd_units": price_usd_units,
                         "distance": product.get("distance", 0.0)
                     })
+                return formatted
 
-            # Check for cart data (from cart agent output or state)
-            # Cart might be in state or need to be fetched
-            if "cart" in session_state:
-                cart_data = session_state.get("cart")
-            elif "cart_items" in session_state:
-                cart_data = session_state.get("cart_items")
+            # Helper function to format cart
+            def format_cart(cart_state):
+                cart_data = cart_state.get(
+                    "cart") or cart_state.get("cart_items")
+                if not cart_data:
+                    return None
+                if isinstance(cart_data, list):
+                    return {
+                        "type": "cart",
+                        "items": cart_data,
+                        "total_items": len(cart_data),
+                        "subtotal": sum(item.get("subtotal", 0.0) for item in cart_data)
+                    }
+                return None
 
-            # Add text response as artifact
-            await updater.add_artifact(
-                [Part(root=TextPart(text=response_text))],
-                name=self.artifact_name,
+            # Process with ADK agent - stream events as they arrive
+            async for event in self.runner.run_async(
+                user_id=user_id, session_id=session.id, new_message=content
+            ):
+                # Stream text chunks incrementally
+                if event.content and event.content.parts:
+                    for part in event.content.parts:
+                        if hasattr(part, 'text') and part.text:
+                            text_chunk = part.text
+                            accumulated_text += text_chunk
+                            # Stream incremental text updates
+                            await updater.add_artifact(
+                                [Part(root=TextPart(text=text_chunk))],
+                                name=self.artifact_name,
+                            )
+                        elif hasattr(part, 'function_call'):
+                            # Function calls are handled internally by ADK
+                            pass
+
+                # Check for state updates (products, cart) periodically
+                # Check state after every event, but only send if available and not already sent
+                if not event.is_final_response():
+                    try:
+                        current_session = await self.runner.session_service.get_session(
+                            app_name=self.agent.name,
+                            user_id=user_id,
+                            session_id=session.id
+                        )
+                        session_state = current_session.state if hasattr(
+                            current_session, 'state') else {}
+
+                        # Stream products if available and not already sent
+                        if not products_sent and "current_results" in session_state:
+                            current_results = session_state.get(
+                                "current_results", [])
+                            if current_results:
+                                formatted_products = format_products(
+                                    current_results)
+                                if formatted_products:
+                                    product_data = {
+                                        "type": "product_list",
+                                        "products": formatted_products
+                                    }
+                                    await updater.add_artifact(
+                                        [Part(root=DataPart(
+                                            data=product_data,
+                                            mimeType="application/json"
+                                        ))],
+                                        name="products"
+                                    )
+                                    products_sent = True
+
+                        # Stream cart if available and not already sent
+                        if not cart_sent and ("cart" in session_state or "cart_items" in session_state):
+                            cart_artifact_data = format_cart(session_state)
+                            if cart_artifact_data:
+                                await updater.add_artifact(
+                                    [Part(root=DataPart(
+                                        data=cart_artifact_data,
+                                        mimeType="application/json"
+                                    ))],
+                                    name="cart"
+                                )
+                                cart_sent = True
+                    except Exception as state_error:
+                        # Don't fail the entire request if state check fails
+                        # Log error but continue processing
+                        pass
+
+            # After agent execution, ensure all artifacts are sent
+            # Get final session state
+            updated_session = await self.runner.session_service.get_session(
+                app_name=self.agent.name,
+                user_id=user_id,
+                session_id=session.id
             )
 
-            # Add products as DataPart artifact if found
-            if formatted_products:
-                product_data = {
-                    "type": "product_list",
-                    "products": formatted_products
-                }
-                await updater.add_artifact(
-                    [Part(root=DataPart(
-                        data=product_data,
-                        mimeType="application/json"
-                    ))],
-                    name="products"
-                )
+            session_state = updated_session.state if hasattr(
+                updated_session, 'state') else {}
 
-            # Add cart as DataPart artifact if found
-            if cart_data:
-                cart_artifact_data = {
-                    "type": "cart",
-                    "items": cart_data if isinstance(cart_data, list) else [],
-                    "total_items": len(cart_data) if isinstance(cart_data, list) else 0,
-                    "subtotal": sum(item.get("subtotal", 0.0) for item in cart_data) if isinstance(cart_data, list) else 0.0
-                }
-                await updater.add_artifact(
-                    [Part(root=DataPart(
-                        data=cart_artifact_data,
-                        mimeType="application/json"
-                    ))],
-                    name="cart"
-                )
+            # Ensure products are sent if not already sent
+            if not products_sent:
+                current_results = session_state.get("current_results", [])
+                if current_results:
+                    formatted_products = format_products(current_results)
+                    if formatted_products:
+                        product_data = {
+                            "type": "product_list",
+                            "products": formatted_products
+                        }
+                        await updater.add_artifact(
+                            [Part(root=DataPart(
+                                data=product_data,
+                                mimeType="application/json"
+                            ))],
+                            name="products"
+                        )
+
+            # Ensure cart is sent if not already sent
+            if not cart_sent:
+                cart_artifact_data = format_cart(session_state)
+                if cart_artifact_data:
+                    await updater.add_artifact(
+                        [Part(root=DataPart(
+                            data=cart_artifact_data,
+                            mimeType="application/json"
+                        ))],
+                        name="cart"
+                    )
 
             # Complete the task
             await updater.complete()
