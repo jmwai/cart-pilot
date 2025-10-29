@@ -110,9 +110,9 @@ a2a_app.routes.append(Route("/.well-known/agent-card.json",
                       agent_card_endpoint, methods=["GET"]))
 # Product API routes
 a2a_app.routes.append(Route("/api/products", get_products, methods=["GET"]))
-# Use regex pattern to capture product ID
+# Use path parameter syntax for product ID
 a2a_app.routes.append(
-    Route(r"/api/products/(?P<id>[^/]+)", get_product_by_id, methods=["GET"]))
+    Route("/api/products/{id}", get_product_by_id, methods=["GET"]))
 
 # Use the built Starlette app
 app = a2a_app

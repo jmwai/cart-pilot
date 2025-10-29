@@ -1,5 +1,6 @@
 """Product API handlers for fetching products from the database."""
 
+import logging
 from typing import Dict
 from starlette.responses import JSONResponse
 from starlette.requests import Request
@@ -37,7 +38,7 @@ async def get_products(request: Request) -> JSONResponse:
     """
     try:
         with get_db_session() as db:
-            
+
             selected_products = db.query(CatalogItem).order_by(
                 func.random()
             ).limit(20).all()
@@ -64,6 +65,11 @@ async def get_product_by_id(request: Request) -> JSONResponse:
     """
     try:
         product_id = request.path_params.get("id")
+
+        # Log for debugging
+        logging.info(f"Fetching product with ID: {product_id}")
+        logging.info(f"Path params: {request.path_params}")
+        logging.info(f"URL path: {request.url.path}")
 
         if not product_id:
             return JSONResponse(

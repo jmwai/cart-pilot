@@ -1,59 +1,39 @@
 'use client';
 
 import { Product } from '@/types';
-import { useState } from 'react';
+import Link from 'next/link';
+import ProductImage from './ProductImage';
 
 interface ProductCardProps {
   product: Product;
-  onAddToCart: (productId: string) => void;
   onViewDetails: (productId: string) => void;
 }
 
-export default function ProductCard({ product, onAddToCart, onViewDetails }: ProductCardProps) {
-  const [imageError, setImageError] = useState(false);
-  
-  const imageUrl = product.product_image_url || product.picture || '/placeholder-product.png';
+export default function ProductCard({ product, onViewDetails }: ProductCardProps) {
   const displayPrice = product.price?.toFixed(2) || 'N/A';
   
   return (
-    <div 
-      className="product-card" 
+    <Link 
+      href={`/products/${product.id}`}
+      className="group block"
       onClick={() => onViewDetails(product.id)}
     >
-      <div className="product-image-container">
-        {!imageError ? (
-          <img 
-            src={imageUrl} 
-            alt={product.name}
-            onError={() => setImageError(true)}
-            className="product-image"
-          />
-        ) : (
-          <div className="product-image-placeholder">
-            <span>No Image</span>
-          </div>
-        )}
+      <div className="aspect-square bg-white border border-gray-200 rounded-lg relative overflow-hidden mb-3">
+        <ProductImage
+          src={product.product_image_url || product.picture}
+          alt={product.name}
+        />
       </div>
       
-      <div className="product-info">
-        <h3 className="product-name">{product.name}</h3>
-        {product.description && (
-          <p className="product-description">{product.description}</p>
-        )}
-        <div className="product-footer">
-          <span className="product-price">${displayPrice}</span>
-          <button 
-            className="add-to-cart-btn"
-            onClick={(e) => {
-              e.stopPropagation();
-              onAddToCart(product.id);
-            }}
-          >
-            Add to Cart
-          </button>
-        </div>
+      <div>
+        <h3 className="text-sm font-medium text-gray-900 mb-1">
+          {product.name}
+        </h3>
+        <p className="text-sm font-normal text-gray-900">
+          ${displayPrice}
+        </p>
       </div>
-    </div>
+    </Link>
   );
 }
 

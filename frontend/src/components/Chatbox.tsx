@@ -166,7 +166,6 @@ export default function Chatbox() {
               <div className="w-full">
                 <ProductGrid
                   products={products}
-                  onAddToCart={handleAddToCart}
                   onViewDetails={handleViewDetails}
                 />
               </div>
