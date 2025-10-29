@@ -19,6 +19,7 @@ export default function Chatbox() {
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [isInitialized, setIsInitialized] = useState(false);
+  const [loadingMessage, setLoadingMessage] = useState<string>('');
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   
@@ -90,6 +91,7 @@ export default function Chatbox() {
     const userMessage = input.trim();
     setInput('');
     addMessage('user', userMessage);
+    setLoadingMessage(getContextualLoadingMessage(userMessage));
     setIsLoading(true);
 
     try {
@@ -142,6 +144,59 @@ export default function Chatbox() {
     console.log('View details:', productId);
   };
 
+  // Generate contextual loading message based on user query
+  const getContextualLoadingMessage = (userMessage: string): string => {
+    const lowerMessage = userMessage.toLowerCase();
+    
+    // Shopping cart actions
+    if (lowerMessage.includes('add') && lowerMessage.includes('cart')) {
+      return 'Adding to cart...';
+    }
+    if (lowerMessage.includes('remove') || lowerMessage.includes('delete')) {
+      return 'Removing from cart...';
+    }
+    if (lowerMessage.includes('update') && lowerMessage.includes('quantity')) {
+      return 'Updating cart...';
+    }
+    if (lowerMessage.includes('cart') || lowerMessage.includes('basket')) {
+      return 'Loading your cart...';
+    }
+    
+    // Search/Discovery actions
+    if (lowerMessage.includes('find') || lowerMessage.includes('search') || lowerMessage.includes('show') || lowerMessage.includes('looking')) {
+      if (lowerMessage.includes('running') || lowerMessage.includes('jogging')) {
+        return 'Finding running shoes...';
+      }
+      if (lowerMessage.includes('casual') || lowerMessage.includes('sneaker')) {
+        return 'Searching for casual shoes...';
+      }
+      if (lowerMessage.includes('basketball') || lowerMessage.includes('basket')) {
+        return 'Finding basketball shoes...';
+      }
+      if (lowerMessage.includes('dress') || lowerMessage.includes('formal')) {
+        return 'Searching for dress shoes...';
+      }
+      if (lowerMessage.includes('hiking') || lowerMessage.includes('boot')) {
+        return 'Finding hiking boots...';
+      }
+      if (lowerMessage.includes('athletic') || lowerMessage.includes('sport')) {
+        return 'Searching for athletic shoes...';
+      }
+      return 'Searching for shoes...';
+    }
+    
+    // Checkout/Payment actions
+    if (lowerMessage.includes('checkout') || lowerMessage.includes('place order') || lowerMessage.includes('buy')) {
+      return 'Preparing checkout...';
+    }
+    if (lowerMessage.includes('pay') || lowerMessage.includes('payment')) {
+      return 'Processing payment...';
+    }
+    
+    // Default
+    return 'Thinking...';
+  };
+
   const handlePromptClick = async (prompt: string) => {
     if (isLoading || !isInitialized) return;
     
@@ -150,6 +205,7 @@ export default function Chatbox() {
     
     // Add user message
     addMessage('user', prompt);
+    setLoadingMessage(getContextualLoadingMessage(prompt));
     setIsLoading(true);
 
     try {
@@ -304,8 +360,14 @@ export default function Chatbox() {
             
             {isLoading && (
               <div className="flex justify-start">
-                <div className="bg-white text-gray-800 px-4 py-2 rounded-lg border border-gray-200">
-                  <p className="text-sm">Thinking...</p>
+                <div className="bg-white text-gray-800 px-4 py-3 rounded-lg border border-gray-200 flex items-center gap-2">
+                  {/* Typing animation */}
+                  <div className="flex gap-1">
+                    <div className="w-2 h-2 bg-gray-400 rounded-full typing-dot"></div>
+                    <div className="w-2 h-2 bg-gray-400 rounded-full typing-dot"></div>
+                    <div className="w-2 h-2 bg-gray-400 rounded-full typing-dot"></div>
+                  </div>
+                  <p className="text-sm">{loadingMessage}</p>
                 </div>
               </div>
             )}
