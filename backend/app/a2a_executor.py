@@ -112,7 +112,7 @@ class ShoppingAgentExecutor(AgentExecutor):
 
             # Process with ADK agent
             response_text = ''
-            products = []
+            cart_data = None
 
             async for event in self.runner.run_async(
                 user_id=user_id, session_id=session.id, new_message=content
@@ -129,22 +129,48 @@ class ShoppingAgentExecutor(AgentExecutor):
                             # Function calls are handled internally by ADK
                             pass
 
-                # Check for tool results that might contain product data
-                if hasattr(event, 'tool_result') and event.tool_result:
-                    result_data = event.tool_result
-                    # Handle different result formats
-                    if isinstance(result_data, list) and len(result_data) > 0:
-                        # Check if this looks like product data
-                        first_item = result_data[0]
-                        if isinstance(first_item, dict) and 'id' in first_item and 'name' in first_item:
-                            products = result_data
-                    elif isinstance(result_data, dict):
-                        # Check if it's wrapped in a products key
-                        if 'products' in result_data and isinstance(result_data['products'], list):
-                            products = result_data['products']
-                        # Or if the dict itself represents a product list structure
-                        elif 'type' in result_data and result_data.get('type') == 'product_list':
-                            products = result_data.get('products', [])
+            # After agent execution, get updated session to access state
+            updated_session = await self.runner.session_service.get_session(
+                app_name=self.agent.name,
+                user_id=user_id,
+                session_id=session.id
+            )
+
+            # Extract products from session state
+            session_state = updated_session.state if hasattr(
+                updated_session, 'state') else {}
+            current_results = session_state.get("current_results", [])
+
+            # Format products with all required fields
+            formatted_products = []
+            if current_results:
+                for product in current_results:
+                    # Calculate price in dollars from price_usd_units (cents)
+                    price_usd_units = product.get("price_usd_units")
+                    price = 0.0
+                    if price_usd_units:
+                        price = float(price_usd_units) / 100.0
+
+                    # Ensure image URL is always present
+                    image_url = product.get(
+                        "product_image_url") or product.get("picture") or ""
+
+                    formatted_products.append({
+                        "id": product.get("id", ""),
+                        "name": product.get("name", ""),
+                        "description": product.get("description", ""),
+                        "image_url": image_url,
+                        "price": price,
+                        "price_usd_units": price_usd_units,
+                        "distance": product.get("distance", 0.0)
+                    })
+
+            # Check for cart data (from cart agent output or state)
+            # Cart might be in state or need to be fetched
+            if "cart" in session_state:
+                cart_data = session_state.get("cart")
+            elif "cart_items" in session_state:
+                cart_data = session_state.get("cart_items")
 
             # Add text response as artifact
             await updater.add_artifact(
@@ -152,12 +178,11 @@ class ShoppingAgentExecutor(AgentExecutor):
                 name=self.artifact_name,
             )
 
-            # If we found products, add them as a separate DataPart artifact
-            if products:
-                import json
+            # Add products as DataPart artifact if found
+            if formatted_products:
                 product_data = {
                     "type": "product_list",
-                    "products": products
+                    "products": formatted_products
                 }
                 await updater.add_artifact(
                     [Part(root=DataPart(
@@ -165,6 +190,22 @@ class ShoppingAgentExecutor(AgentExecutor):
                         mimeType="application/json"
                     ))],
                     name="products"
+                )
+
+            # Add cart as DataPart artifact if found
+            if cart_data:
+                cart_artifact_data = {
+                    "type": "cart",
+                    "items": cart_data if isinstance(cart_data, list) else [],
+                    "total_items": len(cart_data) if isinstance(cart_data, list) else 0,
+                    "subtotal": sum(item.get("subtotal", 0.0) for item in cart_data) if isinstance(cart_data, list) else 0.0
+                }
+                await updater.add_artifact(
+                    [Part(root=DataPart(
+                        data=cart_artifact_data,
+                        mimeType="application/json"
+                    ))],
+                    name="cart"
                 )
 
             # Complete the task

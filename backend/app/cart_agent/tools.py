@@ -77,7 +77,7 @@ def get_cart(tool_context: ToolContext) -> List[Dict[str, Any]]:
             # Load product data via relationship
             product = item.product
             price = product.price_usd_units or 0.0
-            items.append({
+            cart_item_data = {
                 "cart_item_id": item.cart_item_id,
                 "product_id": item.product_id,
                 "quantity": item.quantity,
@@ -85,7 +85,11 @@ def get_cart(tool_context: ToolContext) -> List[Dict[str, Any]]:
                 "picture": product.product_image_url or product.picture,
                 "price": price,
                 "subtotal": price * item.quantity,
-            })
+            }
+            items.append(cart_item_data)
+
+        # Store cart items in state for executor access
+        tool_context.state["cart"] = items
 
         return items
 

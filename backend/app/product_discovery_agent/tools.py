@@ -112,6 +112,7 @@ def text_vector_search(tool_context: ToolContext, query: str) -> List[Dict[str, 
             sql_text(
                 f"SELECT id, name, description, picture, "
                 f"COALESCE(product_image_url, picture) as product_image_url, "
+                f"price_usd_units, "
                 f"(product_embedding <=> '{qvec}'::vector) AS distance "
                 f"FROM catalog_items "
                 f"ORDER BY distance ASC LIMIT 10"
@@ -126,7 +127,8 @@ def text_vector_search(tool_context: ToolContext, query: str) -> List[Dict[str, 
                 "description": row[2] or "",  # Include description
                 "picture": row[3],
                 "product_image_url": row[4],
-                "distance": float(row[5]),
+                "price_usd_units": row[5],  # Include price
+                "distance": float(row[6]),
             })
 
         # Store results in state for product selection
@@ -154,6 +156,7 @@ def image_vector_search(tool_context: ToolContext, image_bytes: bytes) -> List[D
             sql_text(
                 f"SELECT id, name, description, picture, "
                 f"COALESCE(product_image_url, picture) as product_image_url, "
+                f"price_usd_units, "
                 f"(product_image_embedding <=> '{qvec}'::vector) AS distance "
                 f"FROM catalog_items "
                 f"ORDER BY distance ASC LIMIT 10"
@@ -168,7 +171,8 @@ def image_vector_search(tool_context: ToolContext, image_bytes: bytes) -> List[D
                 "description": row[2] or "",  # Include description
                 "picture": row[3],
                 "product_image_url": row[4],
-                "distance": float(row[5]),
+                "price_usd_units": row[5],  # Include price
+                "distance": float(row[6]),
             })
 
         # Store results in state for product selection

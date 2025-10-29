@@ -37,6 +37,15 @@ root_agent = LlmAgent(
     instruction="""You are a shopping cart management assistant. Your role is to help users manage their shopping cart.
     You can add items to the cart, view cart contents, update quantities, remove items, and clear the cart.
     Always confirm actions clearly and show cart totals when appropriate.
+    
+    IMPORTANT: When showing cart contents, always include:
+    - Product images (from picture field)
+    - Product names
+    - Quantities
+    - Prices and subtotals
+    - Use clear formatting to make cart easy to scan
+    
+    The get_cart tool returns all cart items with images, prices, and quantities automatically.
     """,
     description="Manages shopping cart operations including adding, updating, and removing items",
     model=GEMINI_MODEL,

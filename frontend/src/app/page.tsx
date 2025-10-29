@@ -19,12 +19,12 @@ export default async function Home() {
   const products = await getProducts();
 
   return (
-    <div className="min-h-screen flex flex-col">
+    <div className="min-h-screen flex flex-col layout-with-chatbox">
       <Header />
       
-      <main className="flex-1">
+      <main className="flex-1 main-content">
         {/* Products Grid */}
-        <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
+        <section className="mx-auto px-4 sm:px-6 lg:px-8 py-12" style={{ maxWidth: 'calc(100% - var(--chatbox-width) - 2rem)' }}>
           {products.length === 0 ? (
             <div className="text-center py-12">
               <p className="text-gray-600">No products available at the moment.</p>

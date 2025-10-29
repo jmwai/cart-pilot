@@ -46,12 +46,12 @@ export default async function ProductPage({ params }: ProductPageProps) {
   }
 
   return (
-    <div className="min-h-screen flex flex-col">
+    <div className="min-h-screen flex flex-col layout-with-chatbox">
       <Header />
       
-      <main className="flex-1">
+      <main className="flex-1 main-content">
         {/* Product Detail Section */}
-        <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16">
+        <section className="mx-auto px-4 sm:px-6 lg:px-8 py-16" style={{ maxWidth: 'calc(100% - var(--chatbox-width) - 2rem)' }}>
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-16">
             {/* Product Image */}
             <div>
@@ -94,7 +94,7 @@ export default async function ProductPage({ params }: ProductPageProps) {
         {/* You Might Also Like */}
         {relatedProducts.length > 0 && (
           <section className="border-t border-gray-200 py-16">
-            <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div className="mx-auto px-4 sm:px-6 lg:px-8" style={{ maxWidth: 'calc(100% - var(--chatbox-width) - 2rem)' }}>
               <h2 className="text-sm font-medium text-gray-900 mb-8">You Might Also Like</h2>
               <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-6 gap-4">
                 {relatedProducts.map((relatedProduct) => (

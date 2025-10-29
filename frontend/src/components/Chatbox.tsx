@@ -1,20 +1,46 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
-import { ChatMessage, Product } from '@/types';
+import { ChatMessage, Product, CartItem } from '@/types';
 import { shoppingAPI } from '@/lib/shopping-api';
 import { parseA2AResponse } from '@/lib/a2a-parser';
 import ProductGrid from './ProductGrid';
+import CartDisplay from './CartDisplay';
+
+interface MessageWithArtifacts extends ChatMessage {
+  products?: Product[];
+  cart?: CartItem[];
+}
 
 export default function Chatbox() {
+  // On desktop, always open. On mobile/tablet, use toggle state
   const [isOpen, setIsOpen] = useState(true);
-  const [messages, setMessages] = useState<ChatMessage[]>([]);
-  const [products, setProducts] = useState<Product[]>([]);
+  const [messages, setMessages] = useState<MessageWithArtifacts[]>([]);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [isInitialized, setIsInitialized] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  
+  // Check if we're on mobile/tablet
+  const [isMobile, setIsMobile] = useState(false);
+  
+  useEffect(() => {
+    const checkMobile = () => {
+      const mobile = window.innerWidth < 1024;
+      setIsMobile(mobile);
+      // On desktop, always keep open. On mobile, start closed
+      if (mobile) {
+        setIsOpen(false);
+      } else {
+        setIsOpen(true);
+      }
+    };
+    
+    checkMobile();
+    window.addEventListener('resize', checkMobile);
+    return () => window.removeEventListener('resize', checkMobile);
+  }, []);
 
   useEffect(() => {
     // Initialize on mount
@@ -41,11 +67,18 @@ export default function Chatbox() {
     }
   }, [isOpen]);
 
-  const addMessage = (role: 'user' | 'assistant', content: string) => {
+  const addMessage = (
+    role: 'user' | 'assistant', 
+    content: string, 
+    products?: Product[], 
+    cart?: CartItem[]
+  ) => {
     setMessages(prev => [...prev, {
       role,
       content,
-      timestamp: new Date()
+      timestamp: new Date(),
+      products,
+      cart
     }]);
   };
 
@@ -58,24 +91,23 @@ export default function Chatbox() {
     setInput('');
     addMessage('user', userMessage);
     setIsLoading(true);
-    setProducts([]); // Clear previous products
 
     try {
       const response = await shoppingAPI.sendMessage(userMessage);
       
-      // Parse A2A response to extract text and products
-      const { text, products: parsedProducts } = parseA2AResponse(response);
+      // Parse A2A response to extract text, products, and cart
+      const { text, products: parsedProducts, cart: parsedCart } = parseA2AResponse(response);
       
-      // Add text message
-      if (text) {
-        addMessage('assistant', text);
+      // Add assistant message with artifacts attached
+      if (text || parsedProducts.length > 0 || parsedCart) {
+        addMessage(
+          'assistant', 
+          text || 'I received your message.',
+          parsedProducts.length > 0 ? parsedProducts : undefined,
+          parsedCart
+        );
       } else {
         addMessage('assistant', 'I received your message.');
-      }
-      
-      // Store products for rendering
-      if (parsedProducts.length > 0) {
-        setProducts(parsedProducts);
       }
     } catch (error) {
       console.error('Error sending message:', error);
@@ -85,14 +117,24 @@ export default function Chatbox() {
     }
   };
 
-  const handleAddToCart = (productId: string) => {
-    // TODO: Implement add to cart functionality
-    console.log('Add to cart:', productId);
-    // For now, send a message to add the product to cart
-    const product = products.find(p => p.id === productId);
+  const handleAddToCart = (productId: string, quantity: number = 1) => {
+    // Find product from the most recent message with products
+    const productMessage = [...messages].reverse().find(msg => msg.products?.length);
+    const product = productMessage?.products?.find(p => p.id === productId);
     if (product) {
-      setInput(`Add ${product.name} to my cart`);
+      // Always include quantity explicitly, default to 1
+      setInput(`Add ${quantity} ${product.name} to my cart`);
     }
+  };
+
+  const handleUpdateQuantity = async (cartItemId: string, quantity: number) => {
+    // Send message to update cart quantity
+    setInput(`Update quantity of cart item ${cartItemId} to ${quantity}`);
+  };
+
+  const handleRemoveFromCart = (cartItemId: string) => {
+    // Send message to remove item
+    setInput(`Remove cart item ${cartItemId}`);
   };
 
   const handleViewDetails = (productId: string) => {
@@ -100,10 +142,56 @@ export default function Chatbox() {
     console.log('View details:', productId);
   };
 
+  const handlePromptClick = async (prompt: string) => {
+    if (isLoading || !isInitialized) return;
+    
+    // Set input and send immediately
+    setInput(prompt);
+    
+    // Add user message
+    addMessage('user', prompt);
+    setIsLoading(true);
+
+    try {
+      const response = await shoppingAPI.sendMessage(prompt);
+      
+      // Parse A2A response to extract text, products, and cart
+      const { text, products: parsedProducts, cart: parsedCart } = parseA2AResponse(response);
+      
+      // Add assistant message with artifacts attached
+      if (text || parsedProducts.length > 0 || parsedCart) {
+        addMessage(
+          'assistant', 
+          text || 'I received your message.',
+          parsedProducts.length > 0 ? parsedProducts : undefined,
+          parsedCart
+        );
+      } else {
+        addMessage('assistant', 'I received your message.');
+      }
+    } catch (error) {
+      console.error('Error sending message:', error);
+      addMessage('assistant', 'Sorry, I encountered an error. Please try again.');
+    } finally {
+      setIsLoading(false);
+      setInput(''); // Clear input after sending
+    }
+  };
+
+  // Shoe discovery prompts
+  const discoveryPrompts = [
+    'Find running shoes',
+    'Show me casual sneakers',
+    'I need basketball shoes',
+    'Show me dress shoes',
+    'Find hiking boots',
+    'Show me athletic shoes',
+  ];
+
   return (
     <>
-      {/* Floating Chat Button */}
-      {!isOpen && (
+      {/* Floating Chat Button - Only on mobile/tablet */}
+      {isMobile && !isOpen && (
         <button
           onClick={() => setIsOpen(true)}
           className="fixed bottom-6 right-6 w-14 h-14 bg-blue-600 hover:bg-blue-700 text-white rounded-full shadow-lg flex items-center justify-center transition-all hover:scale-110 z-50"
@@ -115,11 +203,20 @@ export default function Chatbox() {
         </button>
       )}
 
-      {/* Chat Window */}
+      {/* Backdrop for mobile/tablet */}
+      {isMobile && isOpen && (
+        <div 
+          className="chatbox-backdrop fixed inset-0 bg-black bg-opacity-50 z-[45]"
+          onClick={() => setIsOpen(false)}
+          aria-hidden="true"
+        />
+      )}
+
+      {/* Chat Window - Sticky right panel */}
       {isOpen && (
-        <div className="fixed bottom-6 right-6 w-[500px] h-[700px] bg-white rounded-lg shadow-2xl flex flex-col z-50 border border-gray-200">
+        <div className={`chatbox-panel ${isMobile ? 'chatbox-slide-in' : ''}`}>
           {/* Header */}
-          <div className="bg-blue-600 text-white px-4 py-3 rounded-t-lg flex items-center justify-between">
+          <div className="bg-blue-600 text-white px-4 py-4 flex items-center justify-between border-b border-blue-700 h-16 flex-shrink-0">
             <div className="flex items-center gap-2">
               <div className="w-8 h-8 bg-blue-500 rounded-full flex items-center justify-center">
                 <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
@@ -128,46 +225,80 @@ export default function Chatbox() {
               </div>
               <span className="font-semibold">Shopping Assistant</span>
             </div>
-            <button
-              onClick={() => setIsOpen(false)}
-              className="hover:bg-blue-700 rounded p-1 transition-colors"
-              aria-label="Close chat"
-            >
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-              </svg>
-            </button>
+            {isMobile && (
+              <button
+                onClick={() => setIsOpen(false)}
+                className="hover:bg-blue-700 rounded p-1 transition-colors"
+                aria-label="Close chat"
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            )}
           </div>
 
           {/* Messages */}
           <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-gray-50 custom-scrollbar">
             {messages.map((msg, idx) => (
-              <div
-                key={idx}
-                className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
-              >
+              <div key={idx} className="space-y-2">
+                {/* Message bubble */}
                 <div
-                  className={`max-w-[80%] px-4 py-2 rounded-lg ${
-                    msg.role === 'user'
-                      ? 'bg-blue-600 text-white'
-                      : 'bg-white text-gray-800 border border-gray-200'
-                  }`}
+                  className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
                 >
-                  <p className="text-sm whitespace-pre-wrap">{msg.content}</p>
-                  <p className="text-xs mt-1 opacity-70">
-                    {msg.timestamp.toLocaleTimeString()}
-                  </p>
+                  <div
+                    className={`max-w-[80%] px-4 py-2 rounded-lg ${
+                      msg.role === 'user'
+                        ? 'bg-blue-600 text-white'
+                        : 'bg-white text-gray-800 border border-gray-200'
+                    }`}
+                  >
+                    <p className="text-sm whitespace-pre-wrap">{msg.content}</p>
+                    <p className="text-xs mt-1 opacity-70">
+                      {msg.timestamp.toLocaleTimeString()}
+                    </p>
+                  </div>
                 </div>
+                
+                {/* Render products if available */}
+                {msg.products && msg.products.length > 0 && (
+                  <div className="w-full">
+                    <ProductGrid
+                      products={msg.products}
+                      onAddToCart={handleAddToCart}
+                      onViewDetails={handleViewDetails}
+                    />
+                  </div>
+                )}
+                
+                {/* Render cart if available */}
+                {msg.cart && msg.cart.length > 0 && (
+                  <div className="w-full">
+                    <CartDisplay
+                      items={msg.cart}
+                      onUpdateQuantity={handleUpdateQuantity}
+                      onRemove={handleRemoveFromCart}
+                    />
+                  </div>
+                )}
               </div>
             ))}
             
-            {/* Render products if available */}
-            {products.length > 0 && (
-              <div className="w-full">
-                <ProductGrid
-                  products={products}
-                  onViewDetails={handleViewDetails}
-                />
+            {/* Show discovery prompts when there are no messages or only welcome message */}
+            {messages.length <= 1 && !isLoading && (
+              <div className="space-y-3">
+                <p className="text-sm text-gray-600 font-medium">Try asking:</p>
+                <div className="flex flex-wrap gap-2">
+                  {discoveryPrompts.map((prompt, idx) => (
+                    <button
+                      key={idx}
+                      onClick={() => handlePromptClick(prompt)}
+                      className="px-3 py-2 text-sm bg-white border border-gray-200 rounded-lg hover:bg-gray-50 hover:border-blue-300 transition-colors text-gray-700"
+                    >
+                      {prompt}
+                    </button>
+                  ))}
+                </div>
               </div>
             )}
             
@@ -182,7 +313,7 @@ export default function Chatbox() {
           </div>
 
           {/* Input Form */}
-          <form onSubmit={handleSend} className="p-4 border-t bg-white rounded-b-lg">
+          <form onSubmit={handleSend} className="p-4 border-t border-gray-200 bg-white flex-shrink-0">
             <div className="flex gap-2">
               <input
                 ref={inputRef}

@@ -5,8 +5,8 @@ import Link from 'next/link';
 export default function Header() {
   return (
     <header className="bg-white border-b border-gray-200 sticky top-0 z-40">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="flex items-center justify-between h-16">
+      <div className="w-full px-4 sm:px-6 lg:px-8">
+        <div className="mx-auto flex items-center justify-between h-16 max-w-full lg:max-w-[calc(100%-var(--chatbox-width))]">
           {/* Logo */}
           <Link href="/" className="flex items-center">
             <span className="text-sm font-medium text-gray-900">Sole Search</span>

@@ -5,7 +5,9 @@ export interface Product {
   description?: string;
   picture?: string;
   product_image_url?: string;
+  image_url?: string;  // Standardized image URL field
   price?: number;
+  price_usd_units?: number;
   category?: string;
   distance?: number;
 }
@@ -13,6 +15,13 @@ export interface Product {
 export interface ProductListData {
   type: "product_list";
   products: Product[];
+}
+
+export interface CartData {
+  type: "cart";
+  items: CartItem[];
+  total_items: number;
+  subtotal: number;
 }
 
 export interface A2AArtifact {
