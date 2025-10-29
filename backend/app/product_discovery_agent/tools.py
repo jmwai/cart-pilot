@@ -6,6 +6,7 @@ import requests
 
 from fastapi import HTTPException
 from sqlalchemy import text as sql_text
+from google.adk.tools import ToolContext
 
 from app.common.config import Settings, get_settings
 from app.common.db import get_db_session
@@ -92,10 +93,11 @@ def _embed_image_1408_from_bytes(data: bytes) -> List[float]:
         return result
 
 
-def text_vector_search(query: str) -> List[Dict[str, Any]]:
+def text_vector_search(tool_context: ToolContext, query: str) -> List[Dict[str, Any]]:
     """
     Performs semantic text search over catalog products using SQLAlchemy and pgvector.
     Args:
+        tool_context: ADK tool context providing access to state
         query: The natural language search query.
     Returns:
         A list of up to 10 products matching the search query.
@@ -126,13 +128,18 @@ def text_vector_search(query: str) -> List[Dict[str, Any]]:
                 "product_image_url": row[4],
                 "distance": float(row[5]),
             })
+
+        # Store results in state for product selection
+        tool_context.state["current_results"] = out
+
         return out
 
 
-def image_vector_search(image_bytes: bytes) -> List[Dict[str, Any]]:
+def image_vector_search(tool_context: ToolContext, image_bytes: bytes) -> List[Dict[str, Any]]:
     """
     Performs visual similarity search for products based on an image using SQLAlchemy and pgvector.
     Args:
+        tool_context: ADK tool context providing access to state
         image_bytes: The raw bytes of the image to search with.
     Returns:
         A list of up to 10 visually similar products.
@@ -163,4 +170,8 @@ def image_vector_search(image_bytes: bytes) -> List[Dict[str, Any]]:
                 "product_image_url": row[4],
                 "distance": float(row[5]),
             })
+
+        # Store results in state for product selection
+        tool_context.state["current_results"] = out
+
         return out

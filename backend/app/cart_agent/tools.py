@@ -3,25 +3,29 @@ from typing import Any, Dict, List
 import uuid
 from datetime import datetime
 from sqlalchemy import func
+from google.adk.tools import ToolContext
 
 from app.common.db import get_db_session
 from app.common.models import CartItem, CatalogItem
 
 
-def add_to_cart(product_id: str, quantity: int, session_id: str) -> Dict[str, Any]:
+def add_to_cart(tool_context: ToolContext, product_id: str, quantity: int = 1) -> Dict[str, Any]:
     """
     Add product to cart with AP2 intent mandate support.
 
     Args:
+        tool_context: ADK tool context providing access to session
         product_id: Unique identifier for the product
-        quantity: Number of items to add (must be > 0)
-        session_id: Session identifier
+        quantity: Number of items to add (must be > 0, default: 1)
 
     Returns:
         Dict containing cart item details
     """
     if quantity <= 0:
         raise ValueError("Quantity must be greater than 0")
+
+    # Get session_id from context
+    session_id = tool_context._invocation_context.session.id
 
     with get_db_session() as db:
         # Get product details
@@ -46,20 +50,22 @@ def add_to_cart(product_id: str, quantity: int, session_id: str) -> Dict[str, An
             "name": product.name,
             "picture": product.product_image_url or product.picture,
             "quantity": quantity,
-            "added_at": cart_item.created_at.isoformat(),
         }
 
 
-def get_cart(session_id: str) -> List[Dict[str, Any]]:
+def get_cart(tool_context: ToolContext) -> List[Dict[str, Any]]:
     """
     Retrieve cart contents.
 
     Args:
-        session_id: Session identifier
+        tool_context: ADK tool context providing access to session
 
     Returns:
         List of cart items with details
     """
+    # Get session_id from context
+    session_id = tool_context._invocation_context.session.id
+
     with get_db_session() as db:
         # Query cart items with product relationship
         cart_items = db.query(CartItem).filter(
@@ -70,12 +76,15 @@ def get_cart(session_id: str) -> List[Dict[str, Any]]:
         for item in cart_items:
             # Load product data via relationship
             product = item.product
+            price = product.price_usd_units or 0.0
             items.append({
                 "cart_item_id": item.cart_item_id,
                 "product_id": item.product_id,
                 "quantity": item.quantity,
                 "name": product.name,
                 "picture": product.product_image_url or product.picture,
+                "price": price,
+                "subtotal": price * item.quantity,
             })
 
         return items
@@ -136,16 +145,19 @@ def remove_from_cart(cart_item_id: str) -> Dict[str, Any]:
         }
 
 
-def clear_cart(session_id: str) -> Dict[str, Any]:
+def clear_cart(tool_context: ToolContext) -> Dict[str, Any]:
     """
     Empty entire cart.
 
     Args:
-        session_id: Session identifier
+        tool_context: ADK tool context providing access to session
 
     Returns:
         Status with items removed count
     """
+    # Get session_id from context
+    session_id = tool_context._invocation_context.session.id
+
     with get_db_session() as db:
         items_removed = db.query(CartItem).filter(
             CartItem.session_id == session_id).delete()
@@ -157,16 +169,19 @@ def clear_cart(session_id: str) -> Dict[str, Any]:
         }
 
 
-def get_cart_total(session_id: str) -> Dict[str, Any]:
+def get_cart_total(tool_context: ToolContext) -> Dict[str, Any]:
     """
     Calculate cart total.
 
     Args:
-        session_id: Session identifier
+        tool_context: ADK tool context providing access to session
 
     Returns:
         Cart totals and item count
     """
+    # Get session_id from context
+    session_id = tool_context._invocation_context.session.id
+
     with get_db_session() as db:
         # Get counts and sums using SQLAlchemy aggregation
         item_count = db.query(func.count(CartItem.cart_item_id)).filter(

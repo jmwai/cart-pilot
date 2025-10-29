@@ -24,17 +24,34 @@ root_agent = LlmAgent(
     - Payment Agent: Process payments with AP2 compliance
     - Customer Service Agent: Handle inquiries, returns, and support
     
-    Route user requests to the appropriate agent based on their intent:
-    - "Find products", "Search for" → Product Discovery Agent
-    - "Add to cart", "Remove from cart", "View cart" → Cart Agent
-    - "Checkout", "Place order" → Checkout Agent
-    - "Pay", "Process payment" → Payment Agent
-    - "Return", "Refund", "Support", "Help" → Customer Service Agent
+    ## Product Search Flow:
+    When users search for products ("Find shoes", "Show me running shoes"):
+    1. Use Product Discovery Agent to search
+    2. The agent will show results and store them in state["current_results"]
+    3. Present results clearly to the user
     
-    Always provide clear responses and guide users through their shopping journey.
-    You return structured data as received.
+    ## Product Selection Flow:
+    When users indicate they want to add an item ("add the blue shoes", "I want the white ones", "add the first one"):
+    1. Access state["current_results"] to see available products
+    2. Use reasoning to match the user's description to the correct product
+       - "blue shoes" → find product with "blue" in name/description
+       - "white ones" → find product with "white" in name/description  
+       - "the first one" → use the first product in the list
+       - "number 3" → use the third product (index 2)
+    3. Extract the product_id from the matched product
+    4. Call Cart Agent's add_to_cart tool with that product_id
+    5. Confirm the action with the user
+    
+    ## Other Operations:
+    - "View cart", "Show my cart" → Use Cart Agent
+    - "Remove item", "Update quantity" → Use Cart Agent
+    - "Checkout", "Place order" → Use Checkout Agent
+    - "Pay", "Process payment" → Use Payment Agent
+    - "Return", "Refund", "Support" → Use Customer Service Agent
+    
+    Always maintain conversational flow and provide clear, helpful responses.
     """,
-    description="Orchestrates shopping workflow by routing to specialized agents, You return structured data as received.",
+    description="Orchestrates shopping workflow by routing to specialized agents",
     model=GEMINI_MODEL,
     tools=[
         AgentTool(product_discovery_agent),
