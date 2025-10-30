@@ -25,6 +25,13 @@ export default async function Home() {
       <main className="flex-1 main-content">
         {/* Products Grid */}
         <section className="mx-auto px-4 sm:px-6 lg:px-8 py-12" style={{ maxWidth: 'calc(100% - var(--chatbox-width) - 2rem)' }}>
+          {/* Landing Page Message */}
+          <div className="mb-8 text-center">
+            <p className="text-lg text-gray-700">
+              I have thousands of shoes. Use the Shopping Assistant to find and buy any type of shoes
+            </p>
+          </div>
+          
           {products.length === 0 ? (
             <div className="text-center py-12">
               <p className="text-gray-600">No products available at the moment.</p>

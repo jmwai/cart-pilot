@@ -4,7 +4,7 @@ import { useState, useRef, useEffect } from 'react';
 import { ChatMessage, Product, CartItem, Order } from '@/types';
 import { shoppingAPI } from '@/lib/shopping-api';
 import { parseA2AResponse, parseStreamingEvent } from '@/lib/a2a-parser';
-import ProductGrid from './ProductGrid';
+import ProductList from './ProductList';
 import CartDisplay from './CartDisplay';
 import OrderDisplay from './OrderDisplay';
 
@@ -782,7 +782,7 @@ export default function Chatbox() {
                 {/* Render products if available */}
                 {msg.products && msg.products.length > 0 && (
                   <div className="w-full">
-                    <ProductGrid
+                    <ProductList
                       products={msg.products}
                       onAddToCart={handleAddToCart}
                       onViewDetails={handleViewDetails}
