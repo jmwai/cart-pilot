@@ -1,4 +1,4 @@
-import { A2AClient, MessageSendParams } from '@a2a-js/sdk/client';
+import { A2AClient } from '@a2a-js/sdk/client';
 import { v4 as uuidv4 } from 'uuid';
 import { Product } from '@/types';
 
@@ -10,6 +10,7 @@ const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ||
 class ShoppingAPI {
   private client: A2AClient | null = null;
   private sessionId: string;
+  private contextId: string | null = null; // Track contextId to maintain session
 
   constructor() {
     // Get or create session ID from localStorage
@@ -18,6 +19,12 @@ class ShoppingAPI {
       this.sessionId = stored || 'session_' + Date.now();
       if (!stored) {
         localStorage.setItem('shopping_session_id', this.sessionId);
+      }
+      
+      // Get or create contextId from localStorage (for A2A session continuity)
+      const storedContextId = localStorage.getItem('shopping_context_id');
+      if (storedContextId) {
+        this.contextId = storedContextId;
       }
     } else {
       this.sessionId = 'session_' + Date.now();
@@ -35,12 +42,13 @@ class ShoppingAPI {
   async sendMessage(text: string): Promise<any> {
     await this.initialize();
 
-    const params: MessageSendParams = {
+    const params: any = {
       message: {
         messageId: uuidv4(),
         role: 'user',
         parts: [{ kind: 'text', text }],
         kind: 'message',
+        contextId: this.contextId || undefined, // Pass contextId to maintain session
       },
       configuration: {
         blocking: true,
@@ -55,12 +63,13 @@ class ShoppingAPI {
   async *sendMessageStream(text: string): AsyncGenerator<any> {
     await this.initialize();
 
-    const params: MessageSendParams = {
+    const params: any = {
       message: {
         messageId: uuidv4(),
         role: 'user',
         parts: [{ kind: 'text', text }],
         kind: 'message',
+        contextId: this.contextId || undefined, // Pass contextId to maintain session
       },
       configuration: {
         blocking: false,
@@ -71,6 +80,26 @@ class ShoppingAPI {
     const stream = this.client!.sendMessageStream(params);
     
     for await (const event of stream) {
+      // Extract contextId from response to maintain session
+      // Check various possible event structures
+      const eventData = (event as any);
+      if (eventData?.result?.contextId) {
+        const newContextId = eventData.result.contextId;
+        if (newContextId && newContextId !== this.contextId) {
+          this.contextId = newContextId;
+          if (typeof window !== 'undefined' && this.contextId) {
+            localStorage.setItem('shopping_context_id', this.contextId);
+          }
+        }
+      } else if (eventData?.contextId) {
+        const newContextId = eventData.contextId;
+        if (newContextId && newContextId !== this.contextId) {
+          this.contextId = newContextId;
+          if (typeof window !== 'undefined' && this.contextId) {
+            localStorage.setItem('shopping_context_id', this.contextId);
+          }
+        }
+      }
       yield event;
     }
   }

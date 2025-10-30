@@ -97,13 +97,38 @@ class ShoppingAgentExecutor(AgentExecutor):
                 ),
             )
 
-            # Create or get session
-            session = await self.runner.session_service.create_session(
-                app_name=self.agent.name,
-                user_id=user_id,
-                state={},
-                session_id=task.context_id,
-            )
+            # Create or get session - preserve existing state if session exists
+            session_id = task.context_id  # Use context_id as session_id
+
+            # Always try to get existing session first to preserve state
+            session = None
+            try:
+                session = await self.runner.session_service.get_session(
+                    app_name=self.agent.name,
+                    user_id=user_id,
+                    session_id=session_id
+                )
+                # Log existing state for debugging
+                if session and hasattr(session, 'state'):
+                    state_keys = list(session.state.keys()
+                                      ) if session.state else []
+                    print(
+                        f"DEBUG: Retrieved existing session {session_id} with state keys: {state_keys}")
+            except Exception as e:
+                # Session doesn't exist, create new one
+                print(
+                    f"DEBUG: Session {session_id} not found, creating new one: {e}")
+                session = await self.runner.session_service.create_session(
+                    app_name=self.agent.name,
+                    user_id=user_id,
+                    state={},
+                    session_id=session_id,
+                )
+
+            # Verify session was created/retrieved
+            if not session:
+                raise ValueError(
+                    f"Failed to create or retrieve session with id: {session_id}")
 
             # Create ADK content message
             content = types.Content(
@@ -168,8 +193,9 @@ class ShoppingAgentExecutor(AgentExecutor):
                 }
 
             # Process with ADK agent - stream events as they arrive
+            # ADK Runner automatically persists state changes made through tool_context.state
             async for event in self.runner.run_async(
-                user_id=user_id, session_id=session.id, new_message=content
+                user_id=user_id, session_id=session_id, new_message=content
             ):
                 # Stream text chunks incrementally
                 if event.content and event.content.parts:
@@ -193,7 +219,7 @@ class ShoppingAgentExecutor(AgentExecutor):
                         current_session = await self.runner.session_service.get_session(
                             app_name=self.agent.name,
                             user_id=user_id,
-                            session_id=session.id
+                            session_id=session_id
                         )
                         session_state = current_session.state if hasattr(
                             current_session, 'state') else {}
@@ -254,7 +280,7 @@ class ShoppingAgentExecutor(AgentExecutor):
             updated_session = await self.runner.session_service.get_session(
                 app_name=self.agent.name,
                 user_id=user_id,
-                session_id=session.id
+                session_id=session_id
             )
 
             session_state = updated_session.state if hasattr(
