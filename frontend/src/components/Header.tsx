@@ -9,7 +9,7 @@ export default function Header() {
         <div className="mx-auto flex items-center justify-between h-16 max-w-full lg:max-w-[calc(100%-var(--chatbox-width))]">
           {/* Logo */}
           <Link href="/" className="flex items-center">
-            <span className="text-sm font-medium text-gray-900">Sole Search</span>
+            <span className="text-sm font-medium text-gray-900">Sole Search (Cloud Run Hackathon demo)</span>
           </Link>
 
           {/* Navigation */}

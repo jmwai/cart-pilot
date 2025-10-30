@@ -2,7 +2,7 @@
 Agent Executor for Shopping Assistant - A2A Protocol
 
 This module implements the executor that bridges A2A protocol to ADK agents.
-It handles incoming A2A requests and executes them using the ADK orchestrator.
+It handles incoming A2A requests and executes them using the ADK shopping agent.
 """
 
 from a2a.server.agent_execution import AgentExecutor, RequestContext
@@ -21,7 +21,7 @@ from google.adk.runners import Runner
 from google.adk.sessions import InMemorySessionService
 from google.genai import types
 
-from app.orchestrator_agent import root_agent as shopping_orchestrator
+from app.shopping_agent import root_agent as shopping_agent
 
 
 class ShoppingAgentExecutor(AgentExecutor):
@@ -36,11 +36,11 @@ class ShoppingAgentExecutor(AgentExecutor):
         """Initialize the shopping agent executor.
 
         Args:
-            agent: The ADK agent instance (defaults to shopping_orchestrator)
+            agent: The ADK agent instance (defaults to shopping_agent)
             status_message: Message to display while processing
             artifact_name: Name for the response artifact
         """
-        self.agent = agent or shopping_orchestrator
+        self.agent = agent or shopping_agent
         self.status_message = status_message
         self.artifact_name = artifact_name
 
@@ -114,6 +114,7 @@ class ShoppingAgentExecutor(AgentExecutor):
             accumulated_text = ''
             products_sent = False
             cart_sent = False
+            order_sent = False
 
             # Helper function to format products
             def format_products(products_list):
@@ -150,6 +151,21 @@ class ShoppingAgentExecutor(AgentExecutor):
                         "subtotal": sum(item.get("subtotal", 0.0) for item in cart_data)
                     }
                 return None
+
+            # Helper function to format order
+            def format_order(order_state):
+                order_data = order_state.get("current_order")
+                if not order_data:
+                    return None
+                return {
+                    "type": "order",
+                    "order_id": order_data.get("order_id", ""),
+                    "status": order_data.get("status", ""),
+                    "items": order_data.get("items", []),
+                    "total_amount": order_data.get("total_amount", 0.0),
+                    "shipping_address": order_data.get("shipping_address", ""),
+                    "created_at": order_data.get("created_at", ""),
+                }
 
             # Process with ADK agent - stream events as they arrive
             async for event in self.runner.run_async(
@@ -215,6 +231,19 @@ class ShoppingAgentExecutor(AgentExecutor):
                                     name="cart"
                                 )
                                 cart_sent = True
+
+                        # Stream order if available and not already sent
+                        if not order_sent and "current_order" in session_state:
+                            order_artifact_data = format_order(session_state)
+                            if order_artifact_data:
+                                await updater.add_artifact(
+                                    [Part(root=DataPart(
+                                        data=order_artifact_data,
+                                        mimeType="application/json"
+                                    ))],
+                                    name="order"
+                                )
+                                order_sent = True
                     except Exception as state_error:
                         # Don't fail the entire request if state check fails
                         # Log error but continue processing
@@ -259,6 +288,18 @@ class ShoppingAgentExecutor(AgentExecutor):
                             mimeType="application/json"
                         ))],
                         name="cart"
+                    )
+
+            # Ensure order is sent if not already sent
+            if not order_sent:
+                order_artifact_data = format_order(session_state)
+                if order_artifact_data:
+                    await updater.add_artifact(
+                        [Part(root=DataPart(
+                            data=order_artifact_data,
+                            mimeType="application/json"
+                        ))],
+                        name="order"
                     )
 
             # Complete the task

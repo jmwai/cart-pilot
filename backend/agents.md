@@ -412,7 +412,7 @@ from ..payment_agent import root_agent as payment_agent
 from ..customer_service_agent import root_agent as customer_service_agent
 
 root_agent = LlmAgent(
-    name="shopping_orchestrator",
+    name="shopping_agent",
     description="Orchestrates shopping workflow by routing to specialized agents",
     model="gemini-2.5-flash",
     tools=[

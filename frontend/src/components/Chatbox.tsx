@@ -1,15 +1,17 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
-import { ChatMessage, Product, CartItem } from '@/types';
+import { ChatMessage, Product, CartItem, Order } from '@/types';
 import { shoppingAPI } from '@/lib/shopping-api';
 import { parseA2AResponse, parseStreamingEvent } from '@/lib/a2a-parser';
 import ProductGrid from './ProductGrid';
 import CartDisplay from './CartDisplay';
+import OrderDisplay from './OrderDisplay';
 
 interface MessageWithArtifacts extends ChatMessage {
   products?: Product[];
   cart?: CartItem[];
+  order?: Order;
 }
 
 export default function Chatbox() {
@@ -80,14 +82,16 @@ export default function Chatbox() {
     role: 'user' | 'assistant', 
     content: string, 
     products?: Product[], 
-    cart?: CartItem[]
+    cart?: CartItem[],
+    order?: Order
   ) => {
     setMessages(prev => [...prev, {
       role,
       content,
       timestamp: new Date(),
       products,
-      cart
+      cart,
+      order
     }]);
   };
 
@@ -106,28 +110,52 @@ export default function Chatbox() {
     let streamingText = '';
     let streamingProducts: Product[] | undefined = undefined;
     let streamingCart: CartItem[] | undefined = undefined;
+    let streamingOrder: Order | undefined = undefined;
     let assistantMessageIndex = -1;
 
     // Helper function to safely extract status message
     const extractStatusMessage = (data: any): string => {
       if (!data) return '';
-      if (typeof data === 'string') return data;
+      if (typeof data === 'string') {
+        // Make sure it's not [object Object]
+        return data !== '[object Object]' ? data : '';
+      }
       if (data && typeof data === 'object') {
         // Try to extract message from object
         if (data.message !== undefined) {
           if (typeof data.message === 'string') return data.message;
           if (typeof data.message === 'object') {
             // If message is an object, try to extract text from it
-            return data.message.text || data.message.value || String(data.message || '');
+            const msgObj = data.message;
+            const extracted = msgObj.text || 
+                            msgObj.value || 
+                            msgObj.content ||
+                            (msgObj.parts && Array.isArray(msgObj.parts) 
+                              ? msgObj.parts
+                                  .map((p: any) => p.text || p.value || '')
+                                  .filter((t: string) => t)
+                                  .join(' ')
+                              : '');
+            // Return extracted string or empty, never [object Object]
+            return extracted && extracted !== '[object Object]' ? extracted : '';
           }
-          return String(data.message);
+          // If String() conversion would give [object Object], return empty
+          const str = String(data.message);
+          return str !== '[object Object]' ? str : '';
         }
-        if (data.state) return String(data.state);
-        if (data.text) return String(data.text);
+        if (data.state) {
+          const stateStr = String(data.state);
+          return stateStr !== '[object Object]' ? stateStr : '';
+        }
+        if (data.text) {
+          const textStr = String(data.text);
+          return textStr !== '[object Object]' ? textStr : '';
+        }
         // If it's just an object with no clear message, return empty string
         return '';
       }
-      return String(data || '');
+      const str = String(data || '');
+      return str !== '[object Object]' ? str : '';
     };
 
     try {
@@ -186,7 +214,8 @@ export default function Chatbox() {
                   updated[assistantMessageIndex] = {
                     ...updated[assistantMessageIndex],
                     products: streamingProducts,
-                    cart: streamingCart
+                    cart: streamingCart,
+                    order: streamingOrder
                   };
                 } else {
                   // Create message if it doesn't exist yet
@@ -196,7 +225,8 @@ export default function Chatbox() {
                     content: streamingText,
                     timestamp: new Date(),
                     products: streamingProducts,
-                    cart: streamingCart
+                    cart: streamingCart,
+                    order: streamingOrder
                   });
                 }
                 return updated;
@@ -213,7 +243,8 @@ export default function Chatbox() {
                   updated[assistantMessageIndex] = {
                     ...updated[assistantMessageIndex],
                     cart: streamingCart,
-                    products: streamingProducts
+                    products: streamingProducts,
+                    order: streamingOrder
                   };
                 } else {
                   // Create message if it doesn't exist yet
@@ -223,7 +254,37 @@ export default function Chatbox() {
                     content: streamingText,
                     timestamp: new Date(),
                     products: streamingProducts,
+                    cart: streamingCart,
+                    order: streamingOrder
+                  });
+                }
+                return updated;
+              });
+              break;
+              
+            case 'order':
+              // Update order immediately
+              streamingOrder = parsedEvent.data.order;
+              
+              setMessages(prev => {
+                const updated = [...prev];
+                if (assistantMessageIndex >= 0 && updated[assistantMessageIndex]) {
+                  updated[assistantMessageIndex] = {
+                    ...updated[assistantMessageIndex],
+                    order: streamingOrder,
+                    products: streamingProducts,
                     cart: streamingCart
+                  };
+                } else {
+                  // Create message if it doesn't exist yet
+                  assistantMessageIndex = updated.length;
+                  updated.push({
+                    role: 'assistant',
+                    content: streamingText,
+                    timestamp: new Date(),
+                    products: streamingProducts,
+                    cart: streamingCart,
+                    order: streamingOrder
                   });
                 }
                 return updated;
@@ -253,7 +314,8 @@ export default function Chatbox() {
                     ...updated[assistantMessageIndex],
                     content: finalText || 'I received your message.',
                     products: streamingProducts,
-                    cart: streamingCart
+                    cart: streamingCart,
+                    order: streamingOrder
                   };
                 } else {
                   // Create final message if somehow missing
@@ -263,7 +325,8 @@ export default function Chatbox() {
                     content: finalText || 'I received your message.',
                     timestamp: new Date(),
                     products: streamingProducts,
-                    cart: streamingCart
+                    cart: streamingCart,
+                    order: streamingOrder
                   });
                 }
                 return updated;
@@ -283,12 +346,13 @@ export default function Chatbox() {
     } catch (error) {
       console.error('Error in streaming:', error);
       // Save partial results if available
-      if (streamingText || streamingProducts || streamingCart) {
+      if (streamingText || streamingProducts || streamingCart || streamingOrder) {
         addMessage(
           'assistant',
           streamingText || 'I received your message.',
           streamingProducts,
-          streamingCart
+          streamingCart,
+          streamingOrder
         );
       } else {
         addMessage('assistant', 'Sorry, I encountered an error. Please try again.');
@@ -364,8 +428,11 @@ export default function Chatbox() {
     }
     
     // Checkout/Payment actions
-    if (lowerMessage.includes('checkout') || lowerMessage.includes('place order') || lowerMessage.includes('buy')) {
-      return 'Preparing checkout...';
+    if (lowerMessage.includes('checkout') || lowerMessage.includes('place order') || lowerMessage.includes('buy') || lowerMessage.includes('yes') && lowerMessage.includes('checkout')) {
+      return 'Creating your order...';
+    }
+    if (lowerMessage.includes('order')) {
+      return 'Processing your order...';
     }
     if (lowerMessage.includes('pay') || lowerMessage.includes('payment')) {
       return 'Processing payment...';
@@ -390,28 +457,52 @@ export default function Chatbox() {
     let streamingText = '';
     let streamingProducts: Product[] | undefined = undefined;
     let streamingCart: CartItem[] | undefined = undefined;
+    let streamingOrder: Order | undefined = undefined;
     let assistantMessageIndex = -1;
 
     // Helper function to safely extract status message
     const extractStatusMessage = (data: any): string => {
       if (!data) return '';
-      if (typeof data === 'string') return data;
+      if (typeof data === 'string') {
+        // Make sure it's not [object Object]
+        return data !== '[object Object]' ? data : '';
+      }
       if (data && typeof data === 'object') {
         // Try to extract message from object
         if (data.message !== undefined) {
           if (typeof data.message === 'string') return data.message;
           if (typeof data.message === 'object') {
             // If message is an object, try to extract text from it
-            return data.message.text || data.message.value || String(data.message || '');
+            const msgObj = data.message;
+            const extracted = msgObj.text || 
+                            msgObj.value || 
+                            msgObj.content ||
+                            (msgObj.parts && Array.isArray(msgObj.parts) 
+                              ? msgObj.parts
+                                  .map((p: any) => p.text || p.value || '')
+                                  .filter((t: string) => t)
+                                  .join(' ')
+                              : '');
+            // Return extracted string or empty, never [object Object]
+            return extracted && extracted !== '[object Object]' ? extracted : '';
           }
-          return String(data.message);
+          // If String() conversion would give [object Object], return empty
+          const str = String(data.message);
+          return str !== '[object Object]' ? str : '';
         }
-        if (data.state) return String(data.state);
-        if (data.text) return String(data.text);
+        if (data.state) {
+          const stateStr = String(data.state);
+          return stateStr !== '[object Object]' ? stateStr : '';
+        }
+        if (data.text) {
+          const textStr = String(data.text);
+          return textStr !== '[object Object]' ? textStr : '';
+        }
         // If it's just an object with no clear message, return empty string
         return '';
       }
-      return String(data || '');
+      const str = String(data || '');
+      return str !== '[object Object]' ? str : '';
     };
 
     try {
@@ -464,7 +555,8 @@ export default function Chatbox() {
                   updated[assistantMessageIndex] = {
                     ...updated[assistantMessageIndex],
                     products: streamingProducts,
-                    cart: streamingCart
+                    cart: streamingCart,
+                    order: streamingOrder
                   };
                 } else {
                   assistantMessageIndex = updated.length;
@@ -473,7 +565,8 @@ export default function Chatbox() {
                     content: streamingText,
                     timestamp: new Date(),
                     products: streamingProducts,
-                    cart: streamingCart
+                    cart: streamingCart,
+                    order: streamingOrder
                   });
                 }
                 return updated;
@@ -488,7 +581,8 @@ export default function Chatbox() {
                   updated[assistantMessageIndex] = {
                     ...updated[assistantMessageIndex],
                     cart: streamingCart,
-                    products: streamingProducts
+                    products: streamingProducts,
+                    order: streamingOrder
                   };
                 } else {
                   assistantMessageIndex = updated.length;
@@ -497,7 +591,34 @@ export default function Chatbox() {
                     content: streamingText,
                     timestamp: new Date(),
                     products: streamingProducts,
+                    cart: streamingCart,
+                    order: streamingOrder
+                  });
+                }
+                return updated;
+              });
+              break;
+              
+            case 'order':
+              streamingOrder = parsedEvent.data.order;
+              setMessages(prev => {
+                const updated = [...prev];
+                if (assistantMessageIndex >= 0 && updated[assistantMessageIndex]) {
+                  updated[assistantMessageIndex] = {
+                    ...updated[assistantMessageIndex],
+                    order: streamingOrder,
+                    products: streamingProducts,
                     cart: streamingCart
+                  };
+                } else {
+                  assistantMessageIndex = updated.length;
+                  updated.push({
+                    role: 'assistant',
+                    content: streamingText,
+                    timestamp: new Date(),
+                    products: streamingProducts,
+                    cart: streamingCart,
+                    order: streamingOrder
                   });
                 }
                 return updated;
@@ -514,6 +635,9 @@ export default function Chatbox() {
                 setLoadingMessage(String(statusMsg || ''));
               }
               break;
+              
+            case 'complete':
+              setIsLoading(false);
               setMessages(prev => {
                 const updated = [...prev];
                 if (assistantMessageIndex >= 0 && updated[assistantMessageIndex]) {
@@ -522,7 +646,8 @@ export default function Chatbox() {
                     ...updated[assistantMessageIndex],
                     content: promptFinalText || 'I received your message.',
                     products: streamingProducts,
-                    cart: streamingCart
+                    cart: streamingCart,
+                    order: streamingOrder
                   };
                 } else {
                   const promptFinalText = typeof streamingText === 'string' ? streamingText : String(streamingText || '');
@@ -531,7 +656,8 @@ export default function Chatbox() {
                     content: promptFinalText || 'I received your message.',
                     timestamp: new Date(),
                     products: streamingProducts,
-                    cart: streamingCart
+                    cart: streamingCart,
+                    order: streamingOrder
                   });
                 }
                 return updated;
@@ -548,15 +674,16 @@ export default function Chatbox() {
       
     } catch (error) {
       console.error('Error in streaming:', error);
-      if (streamingText || streamingProducts || streamingCart) {
+      if (streamingText || streamingProducts || streamingCart || streamingOrder) {
         addMessage(
           'assistant',
           streamingText || 'I received your message.',
           streamingProducts,
-          streamingCart
+          streamingCart,
+          streamingOrder
         );
       } else {
-      addMessage('assistant', 'Sorry, I encountered an error. Please try again.');
+        addMessage('assistant', 'Sorry, I encountered an error. Please try again.');
       }
       setIsLoading(false);
       setInput(''); // Clear input after error
@@ -673,6 +800,13 @@ export default function Chatbox() {
                     />
                   </div>
                 )}
+                
+                {/* Render order if available */}
+                {msg.order && (
+                  <div className="w-full">
+                    <OrderDisplay order={msg.order} />
+                  </div>
+                )}
               </div>
             ))}
             
@@ -707,15 +841,23 @@ export default function Chatbox() {
                     {(() => {
                       // Extra defensive check to ensure we never render an object
                       if (typeof loadingMessage === 'string') {
-                        return loadingMessage;
+                        // Make sure it's not [object Object]
+                        return loadingMessage !== '[object Object]' ? loadingMessage : '';
                       }
                       const msgObj = loadingMessage as any;
                       if (msgObj && typeof msgObj === 'object') {
                         // If it's an object, try to extract a string
-                        const extracted = msgObj.message || msgObj.text || msgObj.state || '';
-                        return typeof extracted === 'string' ? extracted : String(extracted || '');
+                        const extracted = msgObj.message || 
+                                        msgObj.text || 
+                                        msgObj.value ||
+                                        msgObj.content ||
+                                        msgObj.state || 
+                                        '';
+                        const str = typeof extracted === 'string' ? extracted : String(extracted || '');
+                        return str !== '[object Object]' ? str : '';
                       }
-                      return String(loadingMessage || '');
+                      const str = String(loadingMessage || '');
+                      return str !== '[object Object]' ? str : '';
                     })()}
                   </p>
                 </div>

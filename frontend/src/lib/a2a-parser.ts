@@ -1,21 +1,22 @@
-import { Product, ProductListData, CartItem, CartData } from '@/types';
+import { Product, ProductListData, CartItem, CartData, Order, OrderData, OrderItem } from '@/types';
 
 /**
  * Streaming event from A2A protocol
  */
 export interface StreamingEvent {
-  type: 'text' | 'products' | 'cart' | 'status' | 'complete';
+  type: 'text' | 'products' | 'cart' | 'order' | 'status' | 'complete';
   data: any;
   isIncremental: boolean;
 }
 
 /**
- * Parsed A2A response containing text, products, and cart data
+ * Parsed A2A response containing text, products, cart data, and order data
  */
 export interface ParsedA2AResponse {
   text: string;
   products: Product[];
   cart?: CartItem[];
+  order?: Order;
 }
 
 /**
@@ -51,6 +52,34 @@ function formatCartItem(item: any): CartItem {
 }
 
 /**
+ * Helper function to format order item data
+ */
+function formatOrderItem(item: any): OrderItem {
+  return {
+    product_id: item.product_id || '',
+    name: item.name || '',
+    quantity: item.quantity || 0,
+    price: item.price || 0,
+    picture: item.picture || '',
+    subtotal: item.subtotal || (item.price || 0) * (item.quantity || 0),
+  };
+}
+
+/**
+ * Helper function to format order data
+ */
+function formatOrder(order: any): Order {
+  return {
+    order_id: order.order_id || '',
+    status: order.status || '',
+    items: (order.items || []).map(formatOrderItem),
+    total_amount: order.total_amount || 0,
+    shipping_address: order.shipping_address,
+    created_at: order.created_at,
+  };
+}
+
+/**
  * Parse A2A response to extract text, product data, and cart data
  * @param response - The A2A response object (JSON-RPC format)
  * @returns Object containing text message, products array, and optional cart array
@@ -59,6 +88,7 @@ export function parseA2AResponse(response: any): ParsedA2AResponse {
   let text = '';
   const products: Product[] = [];
   let cart: CartItem[] | undefined = undefined;
+  let order: Order | undefined = undefined;
   
   // Handle JSON-RPC response structure: response.result.artifacts
   const artifacts = response.result?.artifacts || response.artifacts || response.output?.artifacts || [];
@@ -95,13 +125,26 @@ export function parseA2AResponse(response: any): ParsedA2AResponse {
           console.error('Error parsing cart data:', error);
         }
       }
+      
+      // Extract order from data parts
+      if (part.kind === 'data' && artifact.name === 'order') {
+        try {
+          const data = part.data as OrderData;
+          if (data?.type === 'order') {
+            order = formatOrder(data);
+          }
+        } catch (error) {
+          console.error('Error parsing order data:', error);
+        }
+      }
     }
   }
   
   return { 
     text: text.trim(), 
     products, 
-    cart 
+    cart,
+    order
   };
 }
 
@@ -129,14 +172,47 @@ export function parseStreamingEvent(event: any): StreamingEvent | null {
   if (event.kind === 'status-update') {
     // Extract and ensure message is a string
     let statusMessage = '';
-    if (event.status?.message) {
-      statusMessage = typeof event.status.message === 'string' 
-        ? event.status.message 
-        : String(event.status.message || '');
-    } else if (event.message) {
-      statusMessage = typeof event.message === 'string' 
-        ? event.message 
-        : String(event.message || '');
+    
+    // Try to extract message from various possible structures
+    const messageObj = event.status?.message || event.message || event.data?.message;
+    
+    if (messageObj) {
+      if (typeof messageObj === 'string') {
+        statusMessage = messageObj;
+      } else if (typeof messageObj === 'object') {
+        // Handle message object structures (TextPart, etc.)
+        // Try common properties that might contain the text
+        statusMessage = messageObj.text || 
+                       messageObj.value || 
+                       messageObj.content ||
+                       (messageObj.parts && Array.isArray(messageObj.parts) 
+                         ? messageObj.parts
+                             .map((p: any) => p.text || p.value || '')
+                             .filter((t: string) => t)
+                             .join(' ')
+                         : '') ||
+                       '';
+        
+        // If still empty, try JSON.stringify fallback (but prefer avoiding it)
+        if (!statusMessage && typeof messageObj === 'object') {
+          // Last resort: try to extract any string-like property
+          const keys = Object.keys(messageObj);
+          for (const key of keys) {
+            const val = messageObj[key];
+            if (typeof val === 'string' && val.length > 0) {
+              statusMessage = val;
+              break;
+            }
+          }
+        }
+        
+        // Final fallback: empty string (don't show [object Object])
+        if (!statusMessage || statusMessage === '[object Object]') {
+          statusMessage = '';
+        }
+      } else {
+        statusMessage = String(messageObj || '');
+      }
     }
     
     return { 
@@ -225,6 +301,24 @@ export function parseStreamingEvent(event: any): StreamingEvent | null {
           }
         } catch (error) {
           console.error('Error parsing cart data:', error);
+        }
+      }
+      
+      // Order artifact
+      if (part.kind === 'data' && artifact.name === 'order') {
+        try {
+          const data = part.data as OrderData;
+          if (data?.type === 'order') {
+            return {
+              type: 'order',
+              data: { 
+                order: formatOrder(data)
+              },
+              isIncremental: artifact.incremental !== false
+            };
+          }
+        } catch (error) {
+          console.error('Error parsing order data:', error);
         }
       }
     }

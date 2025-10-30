@@ -46,6 +46,15 @@ export interface CartItem {
   subtotal: number;
 }
 
+export interface OrderItem {
+  product_id: string;
+  name: string;
+  quantity: number;
+  price: number;
+  picture?: string;
+  subtotal?: number;
+}
+
 export interface Order {
   order_id: string;
   status: string;
@@ -55,11 +64,14 @@ export interface Order {
   created_at?: string;
 }
 
-export interface OrderItem {
-  product_id: string;
-  name: string;
-  quantity: number;
-  price: number;
+export interface OrderData {
+  type: "order";
+  order_id: string;
+  status: string;
+  items: OrderItem[];
+  total_amount: number;
+  shipping_address?: string;
+  created_at?: string;
 }
 
 // Chat Types
