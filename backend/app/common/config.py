@@ -3,6 +3,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 from typing import Optional
 import functools
 
+
 class Settings(BaseSettings):
     # Vertex / Project
     PROJECT_ID: str = Field(..., description="GCP project id")
@@ -20,8 +21,13 @@ class Settings(BaseSettings):
     API_TOP_K_MAX: int = Field(50)
     MAX_UPLOAD_MB: int = Field(10)
 
+    # AI Model Configuration
+    GEMINI_MODEL: str = Field("gemini-2.5-pro",
+                              description="Gemini model to use for agents")
+
     model_config = SettingsConfigDict(
         env_file=".env", env_file_encoding="utf-8", extra="ignore")
+
 
 @functools.lru_cache(maxsize=1)
 def get_settings() -> Settings:

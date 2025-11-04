@@ -1,5 +1,5 @@
 """
-SQLAlchemy ORM models for the shopping orchestrator application.
+SQLAlchemy ORM models for the Cart Pilot application.
 All models consolidated in this single file.
 """
 from __future__ import annotations
@@ -37,6 +37,7 @@ class CatalogItem(Base, TimestampMixin):
     description = Column(Text)
     picture = Column(String(1000))
     product_image_url = Column(String(1000))
+    price_usd_units = Column(Integer)  # Price in dollars (e.g., 1999 = $19.99)
 
     # pgvector embeddings for semantic search
     product_embedding = Column(Vector(1408))      # Text embedding

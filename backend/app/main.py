@@ -4,27 +4,34 @@ FastAPI application for agents-gateway.
 Conforms to ADK guidance: clear API surface, structured JSON, and minimal
 agent/tool coupling at the HTTP layer. Endpoints are stubbed for Phase 1 and
 will be wired to ADK Agents and FunctionTools incrementally.
+
+Now includes A2A protocol support for agent-to-agent communication.
 """
 from __future__ import annotations
 
 import logging
 import os
-import uuid
+import re
 
 # Third-party imports
-from typing import Any, Dict
-from fastapi import FastAPI, HTTPException
 import vertexai
-from vertexai import agent_engines
-from google.adk.cli.fast_api import get_fast_api_app
-from google.adk.memory import VertexAiMemoryBankService
-from google.adk.sessions import VertexAiSessionService
 
+# A2A Protocol imports
+from a2a.server.apps import A2AStarletteApplication
+from a2a.server.request_handlers import DefaultRequestHandler
+from a2a.server.tasks import InMemoryTaskStore
+from app.a2a_agent_card import create_shopping_agent_card
+from app.a2a_executor import ShoppingAgentExecutor
+
+# Starlette imports
+from starlette.middleware.cors import CORSMiddleware as StarletteCORSMiddleware
+from starlette.routing import Route
 
 # Local imports
 from app.common.config import get_settings
-from app.common.db import health_check
-from app.common.utils import get_or_create_agent_engine
+from app.handlers.routes import root, healthz, agent_card_endpoint
+from app.handlers.products import get_products, get_product_by_id
+from app.middleware.logging import LoggingMiddleware
 
 
 logging.basicConfig(
@@ -70,32 +77,54 @@ SESSION_SERVICE_URI = f"sqlite:///./session.db"
 ALLOWED_ORIGINS = ["http://localhost", "http://localhost:8080", "*"]
 SERVE_WEB_INTERFACE = False
 
-app: FastAPI = get_fast_api_app(
-    agents_dir=AGENT_DIR,
-    session_service_uri=SESSION_SERVICE_URI,
-    # memory_service_uri=MEMORY_BANK_SERVICE_URI,
-    allow_origins=ALLOWED_ORIGINS,
-    web=SERVE_WEB_INTERFACE,
-    trace_to_cloud=False,
+# Initialize A2A Protocol as primary application
+# Create agent card
+agent_card = create_shopping_agent_card()
+
+# Create executor
+executor = ShoppingAgentExecutor()
+
+# Create task store
+task_store = InMemoryTaskStore()
+
+# Create request handler
+request_handler = DefaultRequestHandler(executor, task_store)
+
+# Create A2A Starlette application (supports JSON-RPC 2.0)
+a2a_starlette_app = A2AStarletteApplication(
+    agent_card=agent_card,
+    http_handler=request_handler
 )
 
-print("ADK FastAPI app created successfully")
+# Build the Starlette app from A2A application
+# A2AStarletteApplication has a .build() method that returns a Starlette app
+a2a_app = a2a_starlette_app.build()
+
+print("A2A Protocol application created successfully")
 
 
-@app.middleware("http")
-async def log_requests(request, call_next):
-    import time
-    start_time = time.time()
-    print(f"Request: {request.method} {request.url}")
-    response = await call_next(request)
-    process_time = time.time() - start_time
-    print(f"Response: {response.status_code} in {process_time:.2f}s")
-    return response
+# Add custom routes directly to the Starlette app
+a2a_app.routes.append(Route("/", root, methods=["POST"]))
+a2a_app.routes.append(Route("/healthz", healthz, methods=["GET"]))
+a2a_app.routes.append(Route("/.well-known/agent-card.json",
+                      agent_card_endpoint, methods=["GET"]))
+# Product API routes
+a2a_app.routes.append(Route("/api/products", get_products, methods=["GET"]))
+# Use path parameter syntax for product ID
+a2a_app.routes.append(
+    Route("/api/products/{id}", get_product_by_id, methods=["GET"]))
 
+# Use the built Starlette app
+app = a2a_app
 
-@app.get("/healthz")
-def healthz() -> Dict[str, Any]:
-    # run a health check on the database
-    if not health_check():
-        raise HTTPException(status_code=500, detail="Database is not healthy")
-    return {"status": "ok", "message": "Agents Gateway is healthy"}
+# Wrap with CORS middleware
+app = StarletteCORSMiddleware(
+    app,
+    allow_origins=["http://localhost:3000", "http://localhost:8080", "*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# Add logging middleware
+app = LoggingMiddleware(app)

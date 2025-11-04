@@ -1,6 +1,6 @@
-# Sole Search Frontend
+# Cart Pilot Frontend
 
-A modern e-commerce frontend with AI-powered shopping assistant, built with Next.js 16 and integrated with the Shopping Orchestrator backend via A2A protocol.
+A modern e-commerce frontend with AI-powered shopping assistant, built with Next.js 16 and integrated with the Cart Pilot backend via A2A protocol. Experience the future of shopping with AI agents that orchestrate your entire shopping journey.
 
 ## Features
 
@@ -12,7 +12,7 @@ A modern e-commerce frontend with AI-powered shopping assistant, built with Next
   - 📦 Checkout and order creation
   - 💳 Payment processing (AP2-compliant)
   - 🎧 Customer support and returns
-- 🎨 **Modern UI** - Clean, minimalist design inspired by the Sole Search reference images
+- 🎨 **Modern UI** - Clean, minimalist design for a futuristic shopping experience
 - 📱 **Responsive Design** - Works seamlessly on desktop, tablet, and mobile devices
 
 ## Architecture: Agent-Driven Shopping
@@ -105,7 +105,7 @@ The floating chatbox provides AI assistant functionality:
 
 ## AI Integration
 
-The frontend uses the A2A (Agent-to-Agent) protocol to communicate with the backend shopping orchestrator:
+The frontend uses the A2A (Agent-to-Agent) protocol to communicate with the Cart Pilot backend:
 
 1. **Initialization**: Connects to backend via agent card URL
 2. **Session Management**: Creates and maintains session IDs

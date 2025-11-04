@@ -1,4 +1,4 @@
-# Test Suite for Shopping Orchestrator
+# Test Suite for Cart Pilot
 
 ## Overview
 

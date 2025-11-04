@@ -1,10 +1,10 @@
-# Shopping Orchestrator API Documentation
+# Cart Pilot API Documentation
 
 ## Overview
 
-The Shopping Orchestrator is an AI-powered e-commerce assistant that coordinates between specialized agents to help users complete their shopping journey. It supports product discovery, cart management, checkout, payment processing, and customer service.
+The Cart Pilot is an AI-powered e-commerce assistant that coordinates between specialized agents to help users complete their shopping journey. It supports product discovery, cart management, checkout, payment processing, and customer service.
 
-**Agent Name:** `shopping_orchestrator`
+**Agent Name:** `shopping_agent`
 
 ---
 
@@ -13,7 +13,7 @@ The Shopping Orchestrator is an AI-powered e-commerce assistant that coordinates
 ### 1. Create a Session
 
 ```bash
-curl -X POST http://localhost:8080/apps/shopping_orchestrator/users/user_123/sessions/session_abc \
+curl -X POST http://localhost:8080/apps/shopping_agent/users/user_123/sessions/session_abc \
   -H "Content-Type: application/json" \
   -d '{"state": {"preferred_language": "English"}}'
 ```
@@ -22,7 +22,7 @@ curl -X POST http://localhost:8080/apps/shopping_orchestrator/users/user_123/ses
 ```json
 {
   "id": "session_abc",
-  "appName": "shopping_orchestrator",
+  "appName": "shopping_agent",
   "userId": "user_123",
   "state": {"state": {"preferred_language": "English"}},
   "events": [],
@@ -36,7 +36,7 @@ curl -X POST http://localhost:8080/apps/shopping_orchestrator/users/user_123/ses
 curl -X POST http://localhost:8080/run_sse \
   -H "Content-Type: application/json" \
   -d '{
-    "app_name": "shopping_orchestrator",
+    "app_name": "shopping_agent",
     "user_id": "user_123",
     "session_id": "session_abc",
     "new_message": {
@@ -89,7 +89,7 @@ GET /list-apps
 
 **Response:**
 ```json
-["cart_agent", "checkout_agent", "customer_service_agent", "orchestrator_agent", "payment_agent", "product_discovery_agent"]
+["cart_agent", "checkout_agent", "customer_service_agent", "shopping_agent", "payment_agent", "product_discovery_agent"]
 ```
 
 ### Create/Update Session
@@ -115,7 +115,7 @@ POST /run_sse
 **Request Body:**
 ```json
 {
-  "app_name": "shopping_orchestrator",
+  "app_name": "shopping_agent",
   "user_id": "user_123",
   "session_id": "session_abc",
   "new_message": {
@@ -252,7 +252,7 @@ GET /healthz
 
 ## Agent Descriptions
 
-### Shopping Orchestrator
+### Cart Pilot
 - **Purpose:** Routes requests to specialized agents
 - **Description:** "Orchestrates shopping workflow by routing to specialized agents"
 
@@ -313,7 +313,7 @@ This script will:
 
 ### Overview
 
-This section provides a complete guide for implementing a Next.js chatbot frontend using the official A2A JavaScript SDK to interact with the Shopping Orchestrator.
+This section provides a complete guide for implementing a Next.js chatbot frontend using the official A2A JavaScript SDK to interact with Cart Pilot.
 
 **References:**
 - [A2A JavaScript SDK](https://github.com/a2aproject/a2a-js)
@@ -726,10 +726,10 @@ The A2A samples project provides reference implementations:
 #### 1. Create Agent Executor Wrapper
 
 ```python
-# app/orchestrator_agent/agent_executor.py
+# app/shopping_agent/agent_executor.py
 from typing import Set
 from a2a_python import AgentExecutor, RequestContext, ExecutionEventBus
-from app.orchestrator_agent.agent import root_agent
+from app.shopping_agent.agent import root_agent
 
 class OrchestratorAgentExecutor(AgentExecutor):
     """A2A-compliant wrapper for ADK orchestrator agent."""

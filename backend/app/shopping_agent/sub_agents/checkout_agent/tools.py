@@ -1,24 +1,40 @@
 from __future__ import annotations
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 import uuid
+import random
 from datetime import datetime
 from sqlalchemy import func
+from google.adk.tools import ToolContext
 
 from app.common.db import get_db_session
 from app.common.models import CartItem, Order, OrderItem, CatalogItem
 
+# Sample shipping addresses for demo purposes
+SAMPLE_ADDRESSES = [
+    "123 Main Street, Apt 4B, New York, NY 10001",
+    "456 Oak Avenue, Suite 200, Los Angeles, CA 90001",
+    "789 Pine Road, Seattle, WA 98101",
+    "321 Elm Street, Chicago, IL 60601",
+]
 
-def create_order(session_id: str, shipping_address: str) -> Dict[str, Any]:
+
+def create_order(tool_context: ToolContext) -> Dict[str, Any]:
     """
     Convert cart to order with AP2 cart mandate.
+    Shipping address is retrieved from user profile (hardcoded for demo).
 
     Args:
-        session_id: Session identifier
-        shipping_address: Shipping address for the order
+        tool_context: ADK tool context providing access to session
 
     Returns:
         Order details with status
     """
+    # Get session_id from context
+    session_id = tool_context._invocation_context.session.id
+
+    # Select random shipping address (demo: pretending it's from user profile)
+    shipping_address = random.choice(SAMPLE_ADDRESSES)
+
     with get_db_session() as db:
         # Get cart items with product relationship
         cart_items = db.query(CartItem).filter(
@@ -30,22 +46,17 @@ def create_order(session_id: str, shipping_address: str) -> Dict[str, Any]:
 
         # Create order
         order_id = str(uuid.uuid4())
-        total_amount = 0.0  # TODO: Calculate from product prices
+        total_amount = 0.0
 
-        order = Order(
-            order_id=order_id,
-            session_id=session_id,
-            total_amount=total_amount,
-            status="pending",
-            shipping_address=shipping_address
-        )
-        db.add(order)
-
-        # Create order items
+        # Calculate total amount and create order items
         items = []
         for cart_item in cart_items:
             product = cart_item.product
-            price = 0.0  # TODO: Get from product
+            # Get price from product (price_usd_units is stored as dollars, not cents)
+            price_usd_units = product.price_usd_units or 0
+            price = float(price_usd_units)  # Already in dollars, use directly
+            subtotal = price * cart_item.quantity
+            total_amount += subtotal
 
             order_item = OrderItem(
                 order_id=order_id,
@@ -60,33 +71,72 @@ def create_order(session_id: str, shipping_address: str) -> Dict[str, Any]:
                 "name": product.name,
                 "quantity": cart_item.quantity,
                 "price": price,
+                "picture": product.product_image_url or product.picture,
+                "subtotal": subtotal,
             })
+
+        order = Order(
+            order_id=order_id,
+            session_id=session_id,
+            total_amount=total_amount,
+            status="completed",  # Mark as completed since payment is skipped
+            shipping_address=shipping_address
+        )
+        db.add(order)
 
         # Clear cart
         db.query(CartItem).filter(CartItem.session_id == session_id).delete()
         # commit() happens automatically in context manager
 
-        return {
+        # Store order in session state
+        order_data = {
             "order_id": order_id,
-            "status": "pending",
+            "status": "completed",
             "items": items,
             "total_amount": total_amount,
             "shipping_address": shipping_address,
-            "created_at": order.created_at.isoformat(),
+            "created_at": order.created_at.isoformat() if order.created_at else datetime.now().isoformat(),
+        }
+        tool_context.state["current_order"] = order_data
+        tool_context.state["shipping_address"] = shipping_address
+
+        return {
+            "order_id": order_id,
+            "status": "completed",
+            "items": items,
+            "total_amount": total_amount,
+            "shipping_address": shipping_address,
+            "created_at": order_data["created_at"],
             "message": "Order created successfully",
         }
 
 
-def get_order_status(order_id: str) -> Dict[str, Any]:
+def get_order_status(tool_context: ToolContext, order_id: Optional[str] = None) -> Dict[str, Any]:
     """
     Get order details and status.
 
+    If order_id is not provided, retrieves the order from session state["current_order"].
+    If no order is found in state, raises an error.
+
     Args:
-        order_id: Order identifier
+        tool_context: ADK tool context providing access to session
+        order_id: Optional order identifier. If not provided, uses order from session state.
 
     Returns:
         Order details with status
     """
+    # If order_id not provided, try to get from session state
+    if not order_id:
+        session_state = tool_context.state
+        current_order = session_state.get("current_order")
+
+        if current_order and isinstance(current_order, dict):
+            order_id = current_order.get("order_id")
+
+        if not order_id:
+            raise ValueError(
+                "No order ID provided and no order found in session. Please provide an order ID or place an order first.")
+
     with get_db_session() as db:
         # Get order with items relationship
         order = db.query(Order).filter(Order.order_id == order_id).first()
@@ -103,9 +153,11 @@ def get_order_status(order_id: str) -> Dict[str, Any]:
                 "name": product.name,
                 "quantity": order_item.quantity,
                 "price": order_item.price,
+                "picture": product.product_image_url or product.picture,
+                "subtotal": order_item.price * order_item.quantity,
             })
 
-        return {
+        order_data = {
             "order_id": order.order_id,
             "status": order.status,
             "items": items,
@@ -115,12 +167,18 @@ def get_order_status(order_id: str) -> Dict[str, Any]:
             "message": f"Order status: {order.status}",
         }
 
+        # Store in session state
+        tool_context.state["current_order"] = order_data
 
-def cancel_order(order_id: str) -> Dict[str, Any]:
+        return order_data
+
+
+def cancel_order(tool_context: ToolContext, order_id: str) -> Dict[str, Any]:
     """
     Cancel pending order.
 
     Args:
+        tool_context: ADK tool context providing access to session
         order_id: Order identifier
 
     Returns:
@@ -148,16 +206,19 @@ def cancel_order(order_id: str) -> Dict[str, Any]:
         }
 
 
-def validate_cart_for_checkout(session_id: str) -> Dict[str, Any]:
+def validate_cart_for_checkout(tool_context: ToolContext) -> Dict[str, Any]:
     """
     Check if cart is ready for checkout.
 
     Args:
-        session_id: Session identifier
+        tool_context: ADK tool context providing access to session
 
     Returns:
         Validation result with errors and warnings
     """
+    # Get session_id from context
+    session_id = tool_context._invocation_context.session.id
+
     with get_db_session() as db:
         # Check if cart has items
         item_count = db.query(func.count(CartItem.cart_item_id)).filter(

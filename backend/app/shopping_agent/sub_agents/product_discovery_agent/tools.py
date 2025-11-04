@@ -6,6 +6,7 @@ import requests
 
 from fastapi import HTTPException
 from sqlalchemy import text as sql_text
+from google.adk.tools import ToolContext
 
 from app.common.config import Settings, get_settings
 from app.common.db import get_db_session
@@ -92,10 +93,11 @@ def _embed_image_1408_from_bytes(data: bytes) -> List[float]:
         return result
 
 
-def text_vector_search(query: str) -> List[Dict[str, Any]]:
+def text_vector_search(tool_context: ToolContext, query: str) -> List[Dict[str, Any]]:
     """
     Performs semantic text search over catalog products using SQLAlchemy and pgvector.
     Args:
+        tool_context: ADK tool context providing access to state
         query: The natural language search query.
     Returns:
         A list of up to 10 products matching the search query.
@@ -105,15 +107,16 @@ def text_vector_search(query: str) -> List[Dict[str, Any]]:
 
     with get_db_session() as db:
         # Use raw SQL for pgvector distance calculation
+        # Embedding the vector literal directly (safe since it's from the embedding model)
         result = db.execute(
             sql_text(
-                "SELECT id, name, description, picture, "
-                "COALESCE(product_image_url, picture) as product_image_url, "
-                "(product_embedding <=> :vec::vector) AS distance "
-                "FROM catalog_items "
-                "ORDER BY distance ASC LIMIT 10"
-            ),
-            {"vec": qvec}
+                f"SELECT id, name, description, picture, "
+                f"COALESCE(product_image_url, picture) as product_image_url, "
+                f"price_usd_units, "
+                f"(product_embedding <=> '{qvec}'::vector) AS distance "
+                f"FROM catalog_items "
+                f"ORDER BY distance ASC LIMIT 3"
+            )
         )
 
         out = []
@@ -121,17 +124,24 @@ def text_vector_search(query: str) -> List[Dict[str, Any]]:
             out.append({
                 "id": row[0],
                 "name": row[1],
+                "description": row[2] or "",  # Include description
                 "picture": row[3],
                 "product_image_url": row[4],
-                "distance": float(row[5]),
+                "price_usd_units": row[5],  # Include price
+                "distance": float(row[6]),
             })
+
+        # Store results in state for product selection
+        tool_context.state["current_results"] = out
+
         return out
 
 
-def image_vector_search(image_bytes: bytes) -> List[Dict[str, Any]]:
+def image_vector_search(tool_context: ToolContext, image_bytes: bytes) -> List[Dict[str, Any]]:
     """
     Performs visual similarity search for products based on an image using SQLAlchemy and pgvector.
     Args:
+        tool_context: ADK tool context providing access to state
         image_bytes: The raw bytes of the image to search with.
     Returns:
         A list of up to 10 visually similar products.
@@ -141,15 +151,16 @@ def image_vector_search(image_bytes: bytes) -> List[Dict[str, Any]]:
 
     with get_db_session() as db:
         # Use raw SQL for pgvector distance calculation
+        # Embedding the vector literal directly (safe since it's from the embedding model)
         result = db.execute(
             sql_text(
-                "SELECT id, name, description, picture, "
-                "COALESCE(product_image_url, picture) as product_image_url, "
-                "(product_image_embedding <=> :vec::vector) AS distance "
-                "FROM catalog_items "
-                "ORDER BY distance ASC LIMIT 10"
-            ),
-            {"vec": qvec}
+                f"SELECT id, name, description, picture, "
+                f"COALESCE(product_image_url, picture) as product_image_url, "
+                f"price_usd_units, "
+                f"(product_image_embedding <=> '{qvec}'::vector) AS distance "
+                f"FROM catalog_items "
+                f"ORDER BY distance ASC LIMIT 10"
+            )
         )
 
         out = []
@@ -157,8 +168,14 @@ def image_vector_search(image_bytes: bytes) -> List[Dict[str, Any]]:
             out.append({
                 "id": row[0],
                 "name": row[1],
+                "description": row[2] or "",  # Include description
                 "picture": row[3],
                 "product_image_url": row[4],
-                "distance": float(row[5]),
+                "price_usd_units": row[5],  # Include price
+                "distance": float(row[6]),
             })
+
+        # Store results in state for product selection
+        tool_context.state["current_results"] = out
+
         return out

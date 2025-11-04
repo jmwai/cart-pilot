@@ -5,7 +5,7 @@ import pytest
 from unittest.mock import Mock, patch
 from datetime import datetime
 
-from app.customer_service_agent.tools import (
+from app.shopping_agent.sub_agents.customer_service_agent.tools import (
     create_inquiry,
     get_inquiry_status,
     search_faq,
@@ -20,7 +20,7 @@ class TestCreateInquiry:
 
     def test_create_inquiry_success(self, mock_db_session):
         """Test successful creation of inquiry"""
-        with patch('app.customer_service_agent.tools.get_db_session') as mock_session:
+        with patch('app.shopping_agent.sub_agents.customer_service_agent.tools.get_db_session') as mock_session:
             mock_session.return_value.__enter__.return_value = mock_db_session
 
             # Execute
@@ -43,7 +43,7 @@ class TestCreateInquiry:
 
     def test_create_inquiry_allows_null_order_id(self, mock_db_session):
         """Test that order_id can be None"""
-        with patch('app.customer_service_agent.tools.get_db_session') as mock_session:
+        with patch('app.shopping_agent.sub_agents.customer_service_agent.tools.get_db_session') as mock_session:
             mock_session.return_value.__enter__.return_value = mock_db_session
 
             result = create_inquiry(
@@ -54,7 +54,7 @@ class TestCreateInquiry:
 
     def test_create_inquiry_sets_status_open(self, mock_db_session):
         """Test that initial status is 'open'"""
-        with patch('app.customer_service_agent.tools.get_db_session') as mock_session:
+        with patch('app.shopping_agent.sub_agents.customer_service_agent.tools.get_db_session') as mock_session:
             mock_session.return_value.__enter__.return_value = mock_db_session
 
             result = create_inquiry("complaint", "Poor service", "session_abc")
@@ -63,7 +63,7 @@ class TestCreateInquiry:
 
     def test_create_inquiry_generates_uuid(self, mock_db_session):
         """Test that inquiry_id is a UUID"""
-        with patch('app.customer_service_agent.tools.get_db_session') as mock_session:
+        with patch('app.shopping_agent.sub_agents.customer_service_agent.tools.get_db_session') as mock_session:
             mock_session.return_value.__enter__.return_value = mock_db_session
 
             result = create_inquiry("question", "Test?", "session_abc")
@@ -74,7 +74,7 @@ class TestCreateInquiry:
     def test_create_inquiry_stores_message(self, mock_db_session):
         """Test that message is stored correctly"""
         message = "I need help with my order"
-        with patch('app.customer_service_agent.tools.get_db_session') as mock_session:
+        with patch('app.shopping_agent.sub_agents.customer_service_agent.tools.get_db_session') as mock_session:
             mock_session.return_value.__enter__.return_value = mock_db_session
 
             result = create_inquiry("question", message, "session_abc")
@@ -87,7 +87,7 @@ class TestCreateInquiry:
                        'question', 'complaint', 'product_issue']
 
         for inquiry_type in valid_types:
-            with patch('app.customer_service_agent.tools.get_db_session') as mock_session:
+            with patch('app.shopping_agent.sub_agents.customer_service_agent.tools.get_db_session') as mock_session:
                 mock_session.return_value.__enter__.return_value = mock_db_session
 
                 result = create_inquiry(
@@ -101,7 +101,7 @@ class TestGetInquiryStatus:
 
     def test_get_inquiry_status_success(self, mock_db_session, sample_inquiry):
         """Test successful retrieval of inquiry status"""
-        with patch('app.customer_service_agent.tools.get_db_session') as mock_session:
+        with patch('app.shopping_agent.sub_agents.customer_service_agent.tools.get_db_session') as mock_session:
             mock_session.return_value.__enter__.return_value = mock_db_session
 
             # Setup mock query
@@ -119,7 +119,7 @@ class TestGetInquiryStatus:
 
     def test_get_inquiry_status_not_found(self, mock_db_session):
         """Test ValueError raised when inquiry doesn't exist"""
-        with patch('app.customer_service_agent.tools.get_db_session') as mock_session:
+        with patch('app.shopping_agent.sub_agents.customer_service_agent.tools.get_db_session') as mock_session:
             mock_session.return_value.__enter__.return_value = mock_db_session
 
             # Setup mock query to return None
@@ -131,7 +131,7 @@ class TestGetInquiryStatus:
 
     def test_get_inquiry_status_formats_datetime(self, mock_db_session, sample_inquiry):
         """Test that created_at is formatted as ISO string"""
-        with patch('app.customer_service_agent.tools.get_db_session') as mock_session:
+        with patch('app.shopping_agent.sub_agents.customer_service_agent.tools.get_db_session') as mock_session:
             mock_session.return_value.__enter__.return_value = mock_db_session
             mock_db_session.query.return_value.filter.return_value.first.return_value = sample_inquiry
 
@@ -189,14 +189,14 @@ class TestInitiateReturn:
 
     def test_initiate_return_success(self, mock_db_session, sample_order):
         """Test successful return initiation"""
-        with patch('app.customer_service_agent.tools.get_db_session') as mock_session:
+        with patch('app.shopping_agent.sub_agents.customer_service_agent.tools.get_db_session') as mock_session:
             mock_session.return_value.__enter__.return_value = mock_db_session
 
             # Setup order lookup
             mock_db_session.query.return_value.filter.return_value.first.return_value = sample_order
 
             # Mock create_inquiry
-            with patch('app.customer_service_agent.tools.create_inquiry') as mock_inquiry:
+            with patch('app.shopping_agent.sub_agents.customer_service_agent.tools.create_inquiry') as mock_inquiry:
                 mock_inquiry.return_value = {"inquiry_id": "inquiry_123"}
 
                 # Execute
@@ -213,7 +213,7 @@ class TestInitiateReturn:
 
     def test_initiate_return_order_not_found(self, mock_db_session):
         """Test ValueError raised when order doesn't exist"""
-        with patch('app.customer_service_agent.tools.get_db_session') as mock_session:
+        with patch('app.shopping_agent.sub_agents.customer_service_agent.tools.get_db_session') as mock_session:
             mock_session.return_value.__enter__.return_value = mock_db_session
 
             # Setup mock query to return None
@@ -225,11 +225,11 @@ class TestInitiateReturn:
 
     def test_initiate_return_creates_inquiry(self, mock_db_session, sample_order):
         """Test that return creates an inquiry"""
-        with patch('app.customer_service_agent.tools.get_db_session') as mock_session:
+        with patch('app.shopping_agent.sub_agents.customer_service_agent.tools.get_db_session') as mock_session:
             mock_session.return_value.__enter__.return_value = mock_db_session
             mock_db_session.query.return_value.filter.return_value.first.return_value = sample_order
 
-            with patch('app.customer_service_agent.tools.create_inquiry') as mock_inquiry:
+            with patch('app.shopping_agent.sub_agents.customer_service_agent.tools.create_inquiry') as mock_inquiry:
                 mock_inquiry.return_value = {"inquiry_id": "inquiry_123"}
 
                 initiate_return("order_123", "Reason", "session_abc")
@@ -240,11 +240,11 @@ class TestInitiateReturn:
 
     def test_initiate_return_generates_return_id(self, mock_db_session, sample_order):
         """Test that return_id is generated"""
-        with patch('app.customer_service_agent.tools.get_db_session') as mock_session:
+        with patch('app.shopping_agent.sub_agents.customer_service_agent.tools.get_db_session') as mock_session:
             mock_session.return_value.__enter__.return_value = mock_db_session
             mock_db_session.query.return_value.filter.return_value.first.return_value = sample_order
 
-            with patch('app.customer_service_agent.tools.create_inquiry') as mock_inquiry:
+            with patch('app.shopping_agent.sub_agents.customer_service_agent.tools.create_inquiry') as mock_inquiry:
                 mock_inquiry.return_value = {"inquiry_id": "inquiry_123"}
 
                 result = initiate_return("order_123", "Reason", "session_abc")
@@ -254,11 +254,11 @@ class TestInitiateReturn:
 
     def test_initiate_return_returns_instructions(self, mock_db_session, sample_order):
         """Test that return instructions are included"""
-        with patch('app.customer_service_agent.tools.get_db_session') as mock_session:
+        with patch('app.shopping_agent.sub_agents.customer_service_agent.tools.get_db_session') as mock_session:
             mock_session.return_value.__enter__.return_value = mock_db_session
             mock_db_session.query.return_value.filter.return_value.first.return_value = sample_order
 
-            with patch('app.customer_service_agent.tools.create_inquiry') as mock_inquiry:
+            with patch('app.shopping_agent.sub_agents.customer_service_agent.tools.create_inquiry') as mock_inquiry:
                 mock_inquiry.return_value = {"inquiry_id": "inquiry_123"}
 
                 result = initiate_return("order_123", "Reason", "session_abc")
@@ -272,7 +272,7 @@ class TestGetOrderInquiries:
 
     def test_get_order_inquiries_success(self, mock_db_session, sample_inquiry):
         """Test successful retrieval of order inquiries"""
-        with patch('app.customer_service_agent.tools.get_db_session') as mock_session:
+        with patch('app.shopping_agent.sub_agents.customer_service_agent.tools.get_db_session') as mock_session:
             mock_session.return_value.__enter__.return_value = mock_db_session
 
             # Setup mock query
@@ -290,7 +290,7 @@ class TestGetOrderInquiries:
 
     def test_get_order_inquiries_empty(self, mock_db_session):
         """Test empty inquiries list"""
-        with patch('app.customer_service_agent.tools.get_db_session') as mock_session:
+        with patch('app.shopping_agent.sub_agents.customer_service_agent.tools.get_db_session') as mock_session:
             mock_session.return_value.__enter__.return_value = mock_db_session
 
             # Setup mock query to return empty list
@@ -304,7 +304,7 @@ class TestGetOrderInquiries:
 
     def test_get_order_inquiries_ordered_desc(self, mock_db_session, sample_inquiry):
         """Test that inquiries are ordered by created_at DESC"""
-        with patch('app.customer_service_agent.tools.get_db_session') as mock_session:
+        with patch('app.shopping_agent.sub_agents.customer_service_agent.tools.get_db_session') as mock_session:
             mock_session.return_value.__enter__.return_value = mock_db_session
 
             mock_query = mock_db_session.query.return_value
@@ -318,7 +318,7 @@ class TestGetOrderInquiries:
 
     def test_get_order_inquiries_filter_by_order(self, mock_db_session, sample_inquiry):
         """Test that only inquiries for specified order are returned"""
-        with patch('app.customer_service_agent.tools.get_db_session') as mock_session:
+        with patch('app.shopping_agent.sub_agents.customer_service_agent.tools.get_db_session') as mock_session:
             mock_session.return_value.__enter__.return_value = mock_db_session
 
             mock_query = mock_db_session.query.return_value

@@ -5,7 +5,7 @@ import pytest
 from unittest.mock import Mock, patch
 from datetime import datetime
 
-from app.checkout_agent.tools import (
+from app.shopping_agent.sub_agents.checkout_agent.tools import (
     create_order,
     get_order_status,
     cancel_order,
@@ -19,7 +19,7 @@ class TestCreateOrder:
 
     def test_create_order_success(self, mock_db_session, sample_cart_item):
         """Test successful order creation"""
-        with patch('app.checkout_agent.tools.get_db_session') as mock_session:
+        with patch('app.shopping_agent.sub_agents.checkout_agent.tools.get_db_session') as mock_session:
             mock_session.return_value.__enter__.return_value = mock_db_session
 
             # Setup mock for cart items query
@@ -39,7 +39,7 @@ class TestCreateOrder:
 
     def test_create_order_empty_cart(self, mock_db_session):
         """Test ValueError raised for empty cart"""
-        with patch('app.checkout_agent.tools.get_db_session') as mock_session:
+        with patch('app.shopping_agent.sub_agents.checkout_agent.tools.get_db_session') as mock_session:
             mock_session.return_value.__enter__.return_value = mock_db_session
 
             # Setup mock to return empty cart
@@ -51,7 +51,7 @@ class TestCreateOrder:
 
     def test_create_order_clears_cart(self, mock_db_session, sample_cart_item):
         """Test that cart is cleared after order creation"""
-        with patch('app.checkout_agent.tools.get_db_session') as mock_session:
+        with patch('app.shopping_agent.sub_agents.checkout_agent.tools.get_db_session') as mock_session:
             mock_session.return_value.__enter__.return_value = mock_db_session
 
             # Setup mocks
@@ -68,7 +68,7 @@ class TestCreateOrder:
 
     def test_create_order_generates_uuid(self, mock_db_session, sample_cart_item):
         """Test that order_id is a UUID"""
-        with patch('app.checkout_agent.tools.get_db_session') as mock_session:
+        with patch('app.shopping_agent.sub_agents.checkout_agent.tools.get_db_session') as mock_session:
             mock_session.return_value.__enter__.return_value = mock_db_session
             mock_db_session.query.return_value.filter.return_value.all.return_value = [
                 sample_cart_item]
@@ -84,7 +84,7 @@ class TestGetOrderStatus:
 
     def test_get_order_status_success(self, mock_db_session, sample_order, sample_order_item):
         """Test successful retrieval of order status"""
-        with patch('app.checkout_agent.tools.get_db_session') as mock_session:
+        with patch('app.shopping_agent.sub_agents.checkout_agent.tools.get_db_session') as mock_session:
             mock_session.return_value.__enter__.return_value = mock_db_session
 
             # Setup order with items
@@ -106,7 +106,7 @@ class TestGetOrderStatus:
 
     def test_get_order_status_not_found(self, mock_db_session):
         """Test ValueError raised when order doesn't exist"""
-        with patch('app.checkout_agent.tools.get_db_session') as mock_session:
+        with patch('app.shopping_agent.sub_agents.checkout_agent.tools.get_db_session') as mock_session:
             mock_session.return_value.__enter__.return_value = mock_db_session
 
             # Setup mock query to return None
@@ -122,7 +122,7 @@ class TestCancelOrder:
 
     def test_cancel_order_success(self, mock_db_session, sample_order):
         """Test successful order cancellation"""
-        with patch('app.checkout_agent.tools.get_db_session') as mock_session:
+        with patch('app.shopping_agent.sub_agents.checkout_agent.tools.get_db_session') as mock_session:
             mock_session.return_value.__enter__.return_value = mock_db_session
 
             # Setup mock query
@@ -139,7 +139,7 @@ class TestCancelOrder:
 
     def test_cancel_order_not_found(self, mock_db_session):
         """Test ValueError raised when order doesn't exist"""
-        with patch('app.checkout_agent.tools.get_db_session') as mock_session:
+        with patch('app.shopping_agent.sub_agents.checkout_agent.tools.get_db_session') as mock_session:
             mock_session.return_value.__enter__.return_value = mock_db_session
 
             # Setup mock query to return None
@@ -158,7 +158,7 @@ class TestCancelOrder:
             status="completed"
         )
 
-        with patch('app.checkout_agent.tools.get_db_session') as mock_session:
+        with patch('app.shopping_agent.sub_agents.checkout_agent.tools.get_db_session') as mock_session:
             mock_session.return_value.__enter__.return_value = mock_db_session
             mock_db_session.query.return_value.filter.return_value.first.return_value = completed_order
 
@@ -175,7 +175,7 @@ class TestCancelOrder:
             status="pending"
         )
 
-        with patch('app.checkout_agent.tools.get_db_session') as mock_session:
+        with patch('app.shopping_agent.sub_agents.checkout_agent.tools.get_db_session') as mock_session:
             mock_session.return_value.__enter__.return_value = mock_db_session
             mock_db_session.query.return_value.filter.return_value.first.return_value = pending_order
 
@@ -191,7 +191,7 @@ class TestValidateCartForCheckout:
 
     def test_validate_cart_valid(self, mock_db_session):
         """Test validation for valid cart"""
-        with patch('app.checkout_agent.tools.get_db_session') as mock_session:
+        with patch('app.shopping_agent.sub_agents.checkout_agent.tools.get_db_session') as mock_session:
             mock_session.return_value.__enter__.return_value = mock_db_session
 
             # Setup mock query to return count of 3
@@ -207,7 +207,7 @@ class TestValidateCartForCheckout:
 
     def test_validate_cart_empty(self, mock_db_session):
         """Test validation for empty cart"""
-        with patch('app.checkout_agent.tools.get_db_session') as mock_session:
+        with patch('app.shopping_agent.sub_agents.checkout_agent.tools.get_db_session') as mock_session:
             mock_session.return_value.__enter__.return_value = mock_db_session
 
             # Setup mock query to return count of 0
@@ -224,7 +224,7 @@ class TestValidateCartForCheckout:
 
     def test_validate_cart_returns_warnings(self, mock_db_session):
         """Test that warnings list is returned"""
-        with patch('app.checkout_agent.tools.get_db_session') as mock_session:
+        with patch('app.shopping_agent.sub_agents.checkout_agent.tools.get_db_session') as mock_session:
             mock_session.return_value.__enter__.return_value = mock_db_session
             mock_db_session.query.return_value.filter.return_value.scalar.return_value = 1
 

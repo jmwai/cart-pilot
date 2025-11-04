@@ -13,8 +13,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Sole Search - AI-Powered Footwear Discovery",
-  description: "Discover premium footwear curated by AI. Find your perfect pair with intelligent product recommendations.",
+  title: "Cart Pilot - AI-Powered Shopping Assistant",
+  description: "Experience the future of shopping with Cart Pilot. AI agents orchestrate your entire shopping journey - from discovery to checkout - creating a seamless, intelligent shopping experience.",
 };
 
 export default function RootLayout({
