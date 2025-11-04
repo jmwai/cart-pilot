@@ -1,5 +1,5 @@
 from __future__ import annotations
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 import uuid
 import random
 from datetime import datetime
@@ -52,9 +52,9 @@ def create_order(tool_context: ToolContext) -> Dict[str, Any]:
         items = []
         for cart_item in cart_items:
             product = cart_item.product
-            # Get price from product (price_usd_units is in cents)
+            # Get price from product (price_usd_units is stored as dollars, not cents)
             price_usd_units = product.price_usd_units or 0
-            price = float(price_usd_units) / 100.0
+            price = float(price_usd_units)  # Already in dollars, use directly
             subtotal = price * cart_item.quantity
             total_amount += subtotal
 
@@ -111,17 +111,32 @@ def create_order(tool_context: ToolContext) -> Dict[str, Any]:
         }
 
 
-def get_order_status(tool_context: ToolContext, order_id: str) -> Dict[str, Any]:
+def get_order_status(tool_context: ToolContext, order_id: Optional[str] = None) -> Dict[str, Any]:
     """
     Get order details and status.
 
+    If order_id is not provided, retrieves the order from session state["current_order"].
+    If no order is found in state, raises an error.
+
     Args:
         tool_context: ADK tool context providing access to session
-        order_id: Order identifier
+        order_id: Optional order identifier. If not provided, uses order from session state.
 
     Returns:
         Order details with status
     """
+    # If order_id not provided, try to get from session state
+    if not order_id:
+        session_state = tool_context.state
+        current_order = session_state.get("current_order")
+
+        if current_order and isinstance(current_order, dict):
+            order_id = current_order.get("order_id")
+
+        if not order_id:
+            raise ValueError(
+                "No order ID provided and no order found in session. Please provide an order ID or place an order first.")
+
     with get_db_session() as db:
         # Get order with items relationship
         order = db.query(Order).filter(Order.order_id == order_id).first()

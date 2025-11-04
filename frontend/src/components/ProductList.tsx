@@ -14,11 +14,13 @@ export default function ProductList({ products, onAddToCart, onViewDetails }: Pr
   }
   
   const formatPrice = (product: Product): string => {
+    // Prioritize price_usd_units (stored as dollars) - this matches cart behavior
+    if (product.price_usd_units !== undefined && product.price_usd_units !== null) {
+      return (product.price_usd_units / 1).toFixed(2); // Already in dollars
+    }
+    // Fallback to price if available
     if (product.price && product.price > 0) {
       return product.price.toFixed(2);
-    }
-    if (product.price_usd_units) {
-      return (product.price_usd_units / 100).toFixed(2);
     }
     return 'N/A';
   };

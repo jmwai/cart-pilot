@@ -7,7 +7,9 @@ from .sub_agents.checkout_agent import root_agent as checkout_agent
 from .sub_agents.customer_service_agent import root_agent as customer_service_agent
 from .sub_agents.product_discovery_agent import root_agent as product_discovery_agent
 
-GEMINI_MODEL = "gemini-2.5-flash"
+from app.common.config import get_settings
+
+settings = get_settings()
 
 
 root_agent = LlmAgent(
@@ -157,7 +159,7 @@ You are an expert at understanding user intent and delegating to the right speci
 Always be helpful, conversational, and guide users smoothly through their shopping journey.
     """,
     description="Orchestrates shopping workflow by coordinating sub-agents",
-    model=GEMINI_MODEL,
+    model=settings.GEMINI_MODEL,
     sub_agents=[
         cart_agent,
         checkout_agent,

@@ -11,7 +11,9 @@ from .tools import (
     get_payment_history,
 )
 
-GEMINI_MODEL = "gemini-2.5-flash"
+from app.common.config import get_settings
+
+settings = get_settings()
 
 
 class PaymentOutput(BaseModel):
@@ -34,7 +36,7 @@ root_agent = LlmAgent(
     Always ensure AP2 mandates are created for audit and compliance.
     """,
     description="Processes payments using AP2 protocol with cryptographic mandates",
-    model=GEMINI_MODEL,
+    model=settings.GEMINI_MODEL,
     tools=[
         create_payment_mandate,
         process_payment,

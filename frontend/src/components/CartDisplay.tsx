@@ -7,9 +7,10 @@ interface CartDisplayProps {
   items: CartItem[];
   onUpdateQuantity?: (cartItemId: string, quantity: number) => void;
   onRemove?: (cartItemId: string) => void;
+  onPlaceOrder?: () => void;
 }
 
-export default function CartDisplay({ items, onUpdateQuantity, onRemove }: CartDisplayProps) {
+export default function CartDisplay({ items, onUpdateQuantity, onRemove, onPlaceOrder }: CartDisplayProps) {
   const [updating, setUpdating] = useState<string | null>(null);
   
   if (items.length === 0) {
@@ -112,6 +113,15 @@ export default function CartDisplay({ items, onUpdateQuantity, onRemove }: CartD
           <span className="cart-total-label">Total:</span>
           <span className="cart-total-amount">${total.toFixed(2)}</span>
         </div>
+        {onPlaceOrder && (
+          <button
+            onClick={onPlaceOrder}
+            className="cart-place-order-btn"
+            aria-label="Place Order"
+          >
+            Place Order
+          </button>
+        )}
       </div>
     </div>
   );

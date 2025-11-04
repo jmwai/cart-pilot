@@ -7,6 +7,7 @@ import { parseA2AResponse, parseStreamingEvent } from '@/lib/a2a-parser';
 import ProductList from './ProductList';
 import CartDisplay from './CartDisplay';
 import OrderDisplay from './OrderDisplay';
+import { v4 as uuidv4 } from 'uuid';
 
 interface MessageWithArtifacts extends ChatMessage {
   products?: Product[];
@@ -28,6 +29,8 @@ export default function Chatbox() {
   const [loadingMessage, setLoadingMessage] = useState<string>('');
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  // Ref to track the current assistant message index for streaming updates
+  const assistantMessageIndexRef = useRef<number>(-1);
   
   // Check if we're on mobile/tablet
   const [isMobile, setIsMobile] = useState(false);
@@ -86,6 +89,7 @@ export default function Chatbox() {
     order?: Order
   ) => {
     setMessages(prev => [...prev, {
+      id: uuidv4(),
       role,
       content,
       timestamp: new Date(),
@@ -93,6 +97,40 @@ export default function Chatbox() {
       cart,
       order
     }]);
+  };
+
+  // Helper function to ensure assistant message exists and return its index
+  // This function ensures only ONE assistant message is created per request
+  const ensureAssistantMessage = (
+    messages: MessageWithArtifacts[],
+    content: string,
+    products?: Product[],
+    cart?: CartItem[],
+    order?: Order
+  ): number => {
+    // Check if we already have an assistant message for this request
+    if (assistantMessageIndexRef.current >= 0 && 
+        assistantMessageIndexRef.current < messages.length &&
+        messages[assistantMessageIndexRef.current]?.role === 'assistant') {
+      return assistantMessageIndexRef.current;
+    }
+    
+    // Check if there's already an assistant message at the end (from a previous event in same request)
+    // This handles race conditions where multiple events arrive before ref is set
+    if (messages.length > 0) {
+      const lastMessage = messages[messages.length - 1];
+      if (lastMessage.role === 'assistant') {
+        // Reuse the last assistant message
+        assistantMessageIndexRef.current = messages.length - 1;
+        return assistantMessageIndexRef.current;
+      }
+    }
+    
+    // Create new assistant message index
+    // Set ref immediately to prevent other events from creating duplicates
+    const newIndex = messages.length;
+    assistantMessageIndexRef.current = newIndex;
+    return newIndex;
   };
 
   const handleSend = async (e: React.FormEvent) => {
@@ -106,12 +144,14 @@ export default function Chatbox() {
     setLoadingMessage(getContextualLoadingMessage(userMessage));
     setIsLoading(true);
     
+    // Reset assistant message index for new request
+    assistantMessageIndexRef.current = -1;
+    
     // Initialize streaming message state
     let streamingText = '';
     let streamingProducts: Product[] | undefined = undefined;
     let streamingCart: CartItem[] | undefined = undefined;
     let streamingOrder: Order | undefined = undefined;
-    let assistantMessageIndex = -1;
 
     // Helper function to safely extract status message
     const extractStatusMessage = (data: any): string => {
@@ -178,27 +218,32 @@ export default function Chatbox() {
               // Ensure streamingText is always a string before setting state
               const safeText = typeof streamingText === 'string' ? streamingText : String(streamingText || '');
               
-              // Update or create assistant message in real-time
+              // Update or create assistant message in real-time using functional setState
               setMessages(prev => {
                 const updated = [...prev];
-                if (assistantMessageIndex >= 0 && updated[assistantMessageIndex]) {
+                const index = ensureAssistantMessage(updated, safeText, streamingProducts, streamingCart, streamingOrder);
+                
+                if (index < updated.length && updated[index]) {
                   // Update existing message
-                  updated[assistantMessageIndex] = {
-                    ...updated[assistantMessageIndex],
+                  updated[index] = {
+                    ...updated[index],
                     content: safeText,
                     products: streamingProducts,
-                    cart: streamingCart
+                    cart: streamingCart,
+                    order: streamingOrder
                   };
                 } else {
-                  // Create new assistant message
-                  assistantMessageIndex = updated.length;
+                  // Create new message (shouldn't happen due to ensureAssistantMessage, but safety check)
                   updated.push({
+                    id: uuidv4(),
                     role: 'assistant',
                     content: safeText,
                     timestamp: new Date(),
                     products: streamingProducts,
-                    cart: streamingCart
+                    cart: streamingCart,
+                    order: streamingOrder
                   });
+                  assistantMessageIndexRef.current = updated.length - 1;
                 }
                 return updated;
               });
@@ -210,17 +255,18 @@ export default function Chatbox() {
               
               setMessages(prev => {
                 const updated = [...prev];
-                if (assistantMessageIndex >= 0 && updated[assistantMessageIndex]) {
-                  updated[assistantMessageIndex] = {
-                    ...updated[assistantMessageIndex],
+                const index = ensureAssistantMessage(updated, streamingText, streamingProducts, streamingCart, streamingOrder);
+                
+                if (index < updated.length && updated[index]) {
+                  updated[index] = {
+                    ...updated[index],
                     products: streamingProducts,
                     cart: streamingCart,
                     order: streamingOrder
                   };
                 } else {
-                  // Create message if it doesn't exist yet
-                  assistantMessageIndex = updated.length;
                   updated.push({
+                    id: uuidv4(),
                     role: 'assistant',
                     content: streamingText,
                     timestamp: new Date(),
@@ -228,6 +274,7 @@ export default function Chatbox() {
                     cart: streamingCart,
                     order: streamingOrder
                   });
+                  assistantMessageIndexRef.current = updated.length - 1;
                 }
                 return updated;
               });
@@ -239,17 +286,18 @@ export default function Chatbox() {
               
               setMessages(prev => {
                 const updated = [...prev];
-                if (assistantMessageIndex >= 0 && updated[assistantMessageIndex]) {
-                  updated[assistantMessageIndex] = {
-                    ...updated[assistantMessageIndex],
+                const index = ensureAssistantMessage(updated, streamingText, streamingProducts, streamingCart, streamingOrder);
+                
+                if (index < updated.length && updated[index]) {
+                  updated[index] = {
+                    ...updated[index],
                     cart: streamingCart,
                     products: streamingProducts,
                     order: streamingOrder
                   };
                 } else {
-                  // Create message if it doesn't exist yet
-                  assistantMessageIndex = updated.length;
                   updated.push({
+                    id: uuidv4(),
                     role: 'assistant',
                     content: streamingText,
                     timestamp: new Date(),
@@ -257,6 +305,7 @@ export default function Chatbox() {
                     cart: streamingCart,
                     order: streamingOrder
                   });
+                  assistantMessageIndexRef.current = updated.length - 1;
                 }
                 return updated;
               });
@@ -268,17 +317,18 @@ export default function Chatbox() {
               
               setMessages(prev => {
                 const updated = [...prev];
-                if (assistantMessageIndex >= 0 && updated[assistantMessageIndex]) {
-                  updated[assistantMessageIndex] = {
-                    ...updated[assistantMessageIndex],
+                const index = ensureAssistantMessage(updated, streamingText, streamingProducts, streamingCart, streamingOrder);
+                
+                if (index < updated.length && updated[index]) {
+                  updated[index] = {
+                    ...updated[index],
                     order: streamingOrder,
                     products: streamingProducts,
                     cart: streamingCart
                   };
                 } else {
-                  // Create message if it doesn't exist yet
-                  assistantMessageIndex = updated.length;
                   updated.push({
+                    id: uuidv4(),
                     role: 'assistant',
                     content: streamingText,
                     timestamp: new Date(),
@@ -286,6 +336,7 @@ export default function Chatbox() {
                     cart: streamingCart,
                     order: streamingOrder
                   });
+                  assistantMessageIndexRef.current = updated.length - 1;
                 }
                 return updated;
               });
@@ -307,20 +358,20 @@ export default function Chatbox() {
               setIsLoading(false);
               setMessages(prev => {
                 const updated = [...prev];
-                if (assistantMessageIndex >= 0 && updated[assistantMessageIndex]) {
-                  // Ensure final state is correct
-                  const finalText = typeof streamingText === 'string' ? streamingText : String(streamingText || '');
-                  updated[assistantMessageIndex] = {
-                    ...updated[assistantMessageIndex],
+                const finalText = typeof streamingText === 'string' ? streamingText : String(streamingText || '');
+                const index = ensureAssistantMessage(updated, finalText, streamingProducts, streamingCart, streamingOrder);
+                
+                if (index < updated.length && updated[index]) {
+                  updated[index] = {
+                    ...updated[index],
                     content: finalText || 'I received your message.',
                     products: streamingProducts,
                     cart: streamingCart,
                     order: streamingOrder
                   };
                 } else {
-                  // Create final message if somehow missing
-                  const finalText = typeof streamingText === 'string' ? streamingText : String(streamingText || '');
                   updated.push({
+                    id: uuidv4(),
                     role: 'assistant',
                     content: finalText || 'I received your message.',
                     timestamp: new Date(),
@@ -328,9 +379,12 @@ export default function Chatbox() {
                     cart: streamingCart,
                     order: streamingOrder
                   });
+                  assistantMessageIndexRef.current = updated.length - 1;
                 }
                 return updated;
               });
+              // Reset index after completion
+              assistantMessageIndexRef.current = -1;
               break;
           }
         } catch (eventError) {
@@ -342,6 +396,8 @@ export default function Chatbox() {
       
       // Ensure loading is stopped even if no complete event received
       setIsLoading(false);
+      // Reset index after stream completes
+      assistantMessageIndexRef.current = -1;
       
     } catch (error) {
       console.error('Error in streaming:', error);
@@ -358,6 +414,8 @@ export default function Chatbox() {
         addMessage('assistant', 'Sorry, I encountered an error. Please try again.');
       }
       setIsLoading(false);
+      // Reset index after error
+      assistantMessageIndexRef.current = -1;
     }
   };
 
@@ -379,6 +437,262 @@ export default function Chatbox() {
   const handleRemoveFromCart = (cartItemId: string) => {
     // Send message to remove item
     setInput(`Remove cart item ${cartItemId}`);
+  };
+
+  const handlePlaceOrder = () => {
+    // Send message to place order
+    const userMessage = 'Place the order';
+    setInput('');
+    addMessage('user', userMessage);
+    setLoadingMessage('Processing your order...');
+    setIsLoading(true);
+    
+    // Reset assistant message index for new request
+    assistantMessageIndexRef.current = -1;
+    
+    // Initialize streaming message state
+    let streamingText = '';
+    let streamingProducts: Product[] | undefined = undefined;
+    let streamingCart: CartItem[] | undefined = undefined;
+    let streamingOrder: Order | undefined = undefined;
+
+    // Helper function to safely extract status message
+    const extractStatusMessage = (data: any): string => {
+      if (!data) return '';
+      if (typeof data === 'string') {
+        return data !== '[object Object]' ? data : '';
+      }
+      if (data && typeof data === 'object') {
+        if (data.message !== undefined) {
+          if (typeof data.message === 'string') return data.message;
+          if (typeof data.message === 'object') {
+            const msgObj = data.message;
+            const extracted = msgObj.text || 
+                            msgObj.value || 
+                            msgObj.content ||
+                            (msgObj.parts && Array.isArray(msgObj.parts) 
+                              ? msgObj.parts
+                                  .map((p: any) => p.text || p.value || '')
+                                  .filter((t: string) => t)
+                                  .join(' ')
+                              : '');
+            return extracted && extracted !== '[object Object]' ? extracted : '';
+          }
+          const str = String(data.message);
+          return str !== '[object Object]' ? str : '';
+        }
+        if (data.state) {
+          const stateStr = String(data.state);
+          return stateStr !== '[object Object]' ? stateStr : '';
+        }
+        if (data.text) {
+          const textStr = String(data.text);
+          return textStr !== '[object Object]' ? textStr : '';
+        }
+        return '';
+      }
+      const str = String(data || '');
+      return str !== '[object Object]' ? str : '';
+    };
+
+    // Use the same streaming logic as handleSend
+    (async () => {
+      try {
+        for await (const event of shoppingAPI.sendMessageStream(userMessage)) {
+          const parsedEvent = parseStreamingEvent(event);
+          
+          if (!parsedEvent) continue;
+          
+          try {
+            switch (parsedEvent.type) {
+              case 'text':
+                const textChunk = typeof parsedEvent.data?.text === 'string' 
+                  ? parsedEvent.data.text 
+                  : String(parsedEvent.data?.text || '');
+                streamingText += textChunk;
+                
+                const safeText = typeof streamingText === 'string' ? streamingText : String(streamingText || '');
+                
+                setMessages(prev => {
+                  const updated = [...prev];
+                  const index = ensureAssistantMessage(updated, safeText, streamingProducts, streamingCart, streamingOrder);
+                  
+                  if (index < updated.length && updated[index]) {
+                    updated[index] = {
+                      ...updated[index],
+                      content: safeText,
+                      products: streamingProducts,
+                      cart: streamingCart,
+                      order: streamingOrder
+                    };
+                  } else {
+                    updated.push({
+                      id: uuidv4(),
+                      role: 'assistant',
+                      content: safeText,
+                      timestamp: new Date(),
+                      products: streamingProducts,
+                      cart: streamingCart,
+                      order: streamingOrder
+                    });
+                    assistantMessageIndexRef.current = updated.length - 1;
+                  }
+                  return updated;
+                });
+                break;
+                
+              case 'products':
+                streamingProducts = parsedEvent.data.products;
+                
+                setMessages(prev => {
+                  const updated = [...prev];
+                  const index = ensureAssistantMessage(updated, streamingText, streamingProducts, streamingCart, streamingOrder);
+                  
+                  if (index < updated.length && updated[index]) {
+                    updated[index] = {
+                      ...updated[index],
+                      products: streamingProducts,
+                      cart: streamingCart,
+                      order: streamingOrder
+                    };
+                  } else {
+                    updated.push({
+                      id: uuidv4(),
+                      role: 'assistant',
+                      content: streamingText,
+                      timestamp: new Date(),
+                      products: streamingProducts,
+                      cart: streamingCart,
+                      order: streamingOrder
+                    });
+                    assistantMessageIndexRef.current = updated.length - 1;
+                  }
+                  return updated;
+                });
+                break;
+                
+              case 'cart':
+                streamingCart = parsedEvent.data.items;
+                
+                setMessages(prev => {
+                  const updated = [...prev];
+                  const index = ensureAssistantMessage(updated, streamingText, streamingProducts, streamingCart, streamingOrder);
+                  
+                  if (index < updated.length && updated[index]) {
+                    updated[index] = {
+                      ...updated[index],
+                      cart: streamingCart,
+                      products: streamingProducts,
+                      order: streamingOrder
+                    };
+                  } else {
+                    updated.push({
+                      id: uuidv4(),
+                      role: 'assistant',
+                      content: streamingText,
+                      timestamp: new Date(),
+                      products: streamingProducts,
+                      cart: streamingCart,
+                      order: streamingOrder
+                    });
+                    assistantMessageIndexRef.current = updated.length - 1;
+                  }
+                  return updated;
+                });
+                break;
+                
+              case 'order':
+                streamingOrder = parsedEvent.data.order;
+                
+                setMessages(prev => {
+                  const updated = [...prev];
+                  const index = ensureAssistantMessage(updated, streamingText, streamingProducts, streamingCart, streamingOrder);
+                  
+                  if (index < updated.length && updated[index]) {
+                    updated[index] = {
+                      ...updated[index],
+                      order: streamingOrder,
+                      products: streamingProducts,
+                      cart: streamingCart
+                    };
+                  } else {
+                    updated.push({
+                      id: uuidv4(),
+                      role: 'assistant',
+                      content: streamingText,
+                      timestamp: new Date(),
+                      products: streamingProducts,
+                      cart: streamingCart,
+                      order: streamingOrder
+                    });
+                    assistantMessageIndexRef.current = updated.length - 1;
+                  }
+                  return updated;
+                });
+                break;
+                
+              case 'status':
+                const statusMsg = extractStatusMessage(parsedEvent.data);
+                if (statusMsg && typeof statusMsg === 'string') {
+                  setLoadingMessage(statusMsg);
+                } else {
+                  setLoadingMessage(String(statusMsg || ''));
+                }
+                break;
+                
+              case 'complete':
+                setIsLoading(false);
+                setMessages(prev => {
+                  const updated = [...prev];
+                  const finalText = typeof streamingText === 'string' ? streamingText : String(streamingText || '');
+                  const index = ensureAssistantMessage(updated, finalText, streamingProducts, streamingCart, streamingOrder);
+                  
+                  if (index < updated.length && updated[index]) {
+                    updated[index] = {
+                      ...updated[index],
+                      content: finalText || 'I received your message.',
+                      products: streamingProducts,
+                      cart: streamingCart,
+                      order: streamingOrder
+                    };
+                  } else {
+                    updated.push({
+                      id: uuidv4(),
+                      role: 'assistant',
+                      content: finalText || 'I received your message.',
+                      timestamp: new Date(),
+                      products: streamingProducts,
+                      cart: streamingCart,
+                      order: streamingOrder
+                    });
+                    assistantMessageIndexRef.current = updated.length - 1;
+                  }
+                  return updated;
+                });
+                assistantMessageIndexRef.current = -1;
+                break;
+            }
+          } catch (eventError) {
+            console.error('Error processing event:', eventError);
+          }
+        }
+      } catch (error) {
+        console.error('Error in streaming:', error);
+        if (streamingText || streamingProducts || streamingCart || streamingOrder) {
+          addMessage(
+            'assistant',
+            streamingText || 'I received your message.',
+            streamingProducts,
+            streamingCart,
+            streamingOrder
+          );
+        } else {
+          addMessage('assistant', 'Sorry, I encountered an error. Please try again.');
+        }
+        setIsLoading(false);
+        assistantMessageIndexRef.current = -1;
+      }
+    })();
   };
 
   const handleViewDetails = (productId: string) => {
@@ -453,12 +767,14 @@ export default function Chatbox() {
     setLoadingMessage(getContextualLoadingMessage(prompt));
     setIsLoading(true);
     
+    // Reset assistant message index for new request
+    assistantMessageIndexRef.current = -1;
+    
     // Initialize streaming message state
     let streamingText = '';
     let streamingProducts: Product[] | undefined = undefined;
     let streamingCart: CartItem[] | undefined = undefined;
     let streamingOrder: Order | undefined = undefined;
-    let assistantMessageIndex = -1;
 
     // Helper function to safely extract status message
     const extractStatusMessage = (data: any): string => {
@@ -526,22 +842,27 @@ export default function Chatbox() {
               
               setMessages(prev => {
                 const updated = [...prev];
-                if (assistantMessageIndex >= 0 && updated[assistantMessageIndex]) {
-                  updated[assistantMessageIndex] = {
-                    ...updated[assistantMessageIndex],
+                const index = ensureAssistantMessage(updated, promptSafeText, streamingProducts, streamingCart, streamingOrder);
+                
+                if (index < updated.length && updated[index]) {
+                  updated[index] = {
+                    ...updated[index],
                     content: promptSafeText,
                     products: streamingProducts,
-                    cart: streamingCart
+                    cart: streamingCart,
+                    order: streamingOrder
                   };
                 } else {
-                  assistantMessageIndex = updated.length;
                   updated.push({
+                    id: uuidv4(),
                     role: 'assistant',
                     content: promptSafeText,
                     timestamp: new Date(),
                     products: streamingProducts,
-                    cart: streamingCart
+                    cart: streamingCart,
+                    order: streamingOrder
                   });
+                  assistantMessageIndexRef.current = updated.length - 1;
                 }
                 return updated;
               });
@@ -551,16 +872,18 @@ export default function Chatbox() {
               streamingProducts = parsedEvent.data.products;
               setMessages(prev => {
                 const updated = [...prev];
-                if (assistantMessageIndex >= 0 && updated[assistantMessageIndex]) {
-                  updated[assistantMessageIndex] = {
-                    ...updated[assistantMessageIndex],
+                const index = ensureAssistantMessage(updated, streamingText, streamingProducts, streamingCart, streamingOrder);
+                
+                if (index < updated.length && updated[index]) {
+                  updated[index] = {
+                    ...updated[index],
                     products: streamingProducts,
                     cart: streamingCart,
                     order: streamingOrder
                   };
                 } else {
-                  assistantMessageIndex = updated.length;
                   updated.push({
+                    id: uuidv4(),
                     role: 'assistant',
                     content: streamingText,
                     timestamp: new Date(),
@@ -568,6 +891,7 @@ export default function Chatbox() {
                     cart: streamingCart,
                     order: streamingOrder
                   });
+                  assistantMessageIndexRef.current = updated.length - 1;
                 }
                 return updated;
               });
@@ -577,16 +901,18 @@ export default function Chatbox() {
               streamingCart = parsedEvent.data.items;
               setMessages(prev => {
                 const updated = [...prev];
-                if (assistantMessageIndex >= 0 && updated[assistantMessageIndex]) {
-                  updated[assistantMessageIndex] = {
-                    ...updated[assistantMessageIndex],
+                const index = ensureAssistantMessage(updated, streamingText, streamingProducts, streamingCart, streamingOrder);
+                
+                if (index < updated.length && updated[index]) {
+                  updated[index] = {
+                    ...updated[index],
                     cart: streamingCart,
                     products: streamingProducts,
                     order: streamingOrder
                   };
                 } else {
-                  assistantMessageIndex = updated.length;
                   updated.push({
+                    id: uuidv4(),
                     role: 'assistant',
                     content: streamingText,
                     timestamp: new Date(),
@@ -594,6 +920,7 @@ export default function Chatbox() {
                     cart: streamingCart,
                     order: streamingOrder
                   });
+                  assistantMessageIndexRef.current = updated.length - 1;
                 }
                 return updated;
               });
@@ -603,16 +930,18 @@ export default function Chatbox() {
               streamingOrder = parsedEvent.data.order;
               setMessages(prev => {
                 const updated = [...prev];
-                if (assistantMessageIndex >= 0 && updated[assistantMessageIndex]) {
-                  updated[assistantMessageIndex] = {
-                    ...updated[assistantMessageIndex],
+                const index = ensureAssistantMessage(updated, streamingText, streamingProducts, streamingCart, streamingOrder);
+                
+                if (index < updated.length && updated[index]) {
+                  updated[index] = {
+                    ...updated[index],
                     order: streamingOrder,
                     products: streamingProducts,
                     cart: streamingCart
                   };
                 } else {
-                  assistantMessageIndex = updated.length;
                   updated.push({
+                    id: uuidv4(),
                     role: 'assistant',
                     content: streamingText,
                     timestamp: new Date(),
@@ -620,6 +949,7 @@ export default function Chatbox() {
                     cart: streamingCart,
                     order: streamingOrder
                   });
+                  assistantMessageIndexRef.current = updated.length - 1;
                 }
                 return updated;
               });
@@ -640,18 +970,20 @@ export default function Chatbox() {
               setIsLoading(false);
               setMessages(prev => {
                 const updated = [...prev];
-                if (assistantMessageIndex >= 0 && updated[assistantMessageIndex]) {
-                  const promptFinalText = typeof streamingText === 'string' ? streamingText : String(streamingText || '');
-                  updated[assistantMessageIndex] = {
-                    ...updated[assistantMessageIndex],
+                const promptFinalText = typeof streamingText === 'string' ? streamingText : String(streamingText || '');
+                const index = ensureAssistantMessage(updated, promptFinalText, streamingProducts, streamingCart, streamingOrder);
+                
+                if (index < updated.length && updated[index]) {
+                  updated[index] = {
+                    ...updated[index],
                     content: promptFinalText || 'I received your message.',
                     products: streamingProducts,
                     cart: streamingCart,
                     order: streamingOrder
                   };
                 } else {
-                  const promptFinalText = typeof streamingText === 'string' ? streamingText : String(streamingText || '');
                   updated.push({
+                    id: uuidv4(),
                     role: 'assistant',
                     content: promptFinalText || 'I received your message.',
                     timestamp: new Date(),
@@ -659,9 +991,12 @@ export default function Chatbox() {
                     cart: streamingCart,
                     order: streamingOrder
                   });
+                  assistantMessageIndexRef.current = updated.length - 1;
                 }
                 return updated;
               });
+              // Reset index after completion
+              assistantMessageIndexRef.current = -1;
               break;
           }
         } catch (eventError) {
@@ -671,6 +1006,8 @@ export default function Chatbox() {
       
       setIsLoading(false);
       setInput(''); // Clear input after sending
+      // Reset index after stream completes
+      assistantMessageIndexRef.current = -1;
       
     } catch (error) {
       console.error('Error in streaming:', error);
@@ -683,10 +1020,12 @@ export default function Chatbox() {
           streamingOrder
         );
       } else {
-        addMessage('assistant', 'Sorry, I encountered an error. Please try again.');
+      addMessage('assistant', 'Sorry, I encountered an error. Please try again.');
       }
       setIsLoading(false);
       setInput(''); // Clear input after error
+      // Reset index after error
+      assistantMessageIndexRef.current = -1;
     }
   };
 
@@ -757,8 +1096,8 @@ export default function Chatbox() {
 
           {/* Messages */}
           <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-gray-50 custom-scrollbar">
-            {messages.map((msg, idx) => (
-              <div key={idx} className="space-y-2">
+            {messages.map((msg) => (
+              <div key={msg.id} className="space-y-2">
                 {/* Message bubble */}
               <div
                 className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
@@ -797,6 +1136,7 @@ export default function Chatbox() {
                       items={msg.cart}
                       onUpdateQuantity={handleUpdateQuantity}
                       onRemove={handleRemoveFromCart}
+                      onPlaceOrder={handlePlaceOrder}
                     />
                   </div>
                 )}

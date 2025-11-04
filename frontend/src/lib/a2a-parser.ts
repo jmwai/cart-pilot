@@ -258,8 +258,41 @@ export function parseStreamingEvent(event: any): StreamingEvent | null {
           textValue = String(part.text || '');
         }
         
+        // Check if text is JSON that matches artifact data structures
+        if (textValue && (textValue.trim().startsWith('{') || textValue.trim().startsWith('['))) {
+          try {
+            const parsed = JSON.parse(textValue);
+            
+            // If this is artifact data we've already processed, skip it
+            if (parsed.type === 'cart' || parsed.type === 'product_list' || parsed.type === 'order') {
+              // This is duplicate artifact data, skip displaying as text
+              // But extract message field if it exists
+              if (parsed.message && typeof parsed.message === 'string' && parsed.message.trim()) {
+                return {
+                  type: 'text',
+                  data: { text: parsed.message },
+                  isIncremental: artifact.incremental !== false
+                };
+              }
+              // Skip if no message field - we already have the artifact
+              return null;
+            }
+            
+            // If JSON contains a message field, extract it
+            if (parsed.message && typeof parsed.message === 'string' && parsed.message.trim()) {
+              textValue = parsed.message;
+            } else {
+              // If it's JSON but doesn't have a message field, skip it
+              // (it's likely artifact data that will be sent separately)
+              return null;
+            }
+          } catch {
+            // Not valid JSON, use as-is
+          }
+        }
+        
         // Only return if we have actual text content
-        if (textValue) {
+        if (textValue && textValue.trim()) {
           return {
             type: 'text',
             data: { text: textValue },

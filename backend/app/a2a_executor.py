@@ -115,20 +115,32 @@ class ShoppingAgentExecutor(AgentExecutor):
                     print(
                         f"DEBUG: Retrieved existing session {session_id} with state keys: {state_keys}")
             except Exception as e:
-                # Session doesn't exist, create new one
+                # Session doesn't exist or error occurred
                 print(
-                    f"DEBUG: Session {session_id} not found, creating new one: {e}")
-                session = await self.runner.session_service.create_session(
-                    app_name=self.agent.name,
-                    user_id=user_id,
-                    state={},
-                    session_id=session_id,
-                )
+                    f"DEBUG: Session {session_id} get_session raised exception: {e}")
+
+            # If session is None (either get_session returned None or raised exception), create new one
+            if session is None:
+                print(
+                    f"DEBUG: Session {session_id} not found, creating new one (app_name={self.agent.name}, user_id={user_id})")
+                try:
+                    session = await self.runner.session_service.create_session(
+                        app_name=self.agent.name,
+                        user_id=user_id,
+                        state={},
+                        session_id=session_id,
+                    )
+                    print(f"DEBUG: Successfully created session {session_id}")
+                except Exception as create_error:
+                    print(
+                        f"DEBUG: Failed to create session {session_id}: {create_error}")
+                    raise ValueError(
+                        f"Failed to create session with id: {session_id} (app_name={self.agent.name}, user_id={user_id}): {create_error}")
 
             # Verify session was created/retrieved
             if not session:
                 raise ValueError(
-                    f"Failed to create or retrieve session with id: {session_id}")
+                    f"Failed to create or retrieve session with id: {session_id} (app_name={self.agent.name}, user_id={user_id})")
 
             # Create ADK content message
             content = types.Content(
@@ -141,6 +153,19 @@ class ShoppingAgentExecutor(AgentExecutor):
             cart_sent = False
             order_sent = False
 
+            # Track initial state to detect modifications
+            initial_session = await self.runner.session_service.get_session(
+                app_name=self.agent.name,
+                user_id=user_id,
+                session_id=session_id
+            )
+            initial_state = initial_session.state if hasattr(
+                initial_session, 'state') else {}
+            initial_products = initial_state.get("current_results", [])
+            initial_cart = initial_state.get(
+                "cart") or initial_state.get("cart_items", [])
+            initial_order = initial_state.get("current_order")
+
             # Helper function to format products
             def format_products(products_list):
                 formatted = []
@@ -148,7 +173,9 @@ class ShoppingAgentExecutor(AgentExecutor):
                     price_usd_units = product.get("price_usd_units")
                     price = 0.0
                     if price_usd_units:
-                        price = float(price_usd_units) / 100.0
+                        # price_usd_units is stored as dollars (not cents), use directly
+                        # This matches how cart_agent/tools.py handles prices
+                        price = float(price_usd_units)
                     image_url = product.get(
                         "product_image_url") or product.get("picture") or ""
                     formatted.append({
@@ -224,11 +251,12 @@ class ShoppingAgentExecutor(AgentExecutor):
                         session_state = current_session.state if hasattr(
                             current_session, 'state') else {}
 
-                        # Stream products if available and not already sent
+                        # Stream products ONLY if they were modified during this request
                         if not products_sent and "current_results" in session_state:
                             current_results = session_state.get(
                                 "current_results", [])
-                            if current_results:
+                            # Only send if products changed (new search performed)
+                            if current_results and current_results != initial_products:
                                 formatted_products = format_products(
                                     current_results)
                                 if formatted_products:
@@ -245,31 +273,41 @@ class ShoppingAgentExecutor(AgentExecutor):
                                     )
                                     products_sent = True
 
-                        # Stream cart if available and not already sent
+                        # Stream cart ONLY if it was modified during this request
                         if not cart_sent and ("cart" in session_state or "cart_items" in session_state):
-                            cart_artifact_data = format_cart(session_state)
-                            if cart_artifact_data:
-                                await updater.add_artifact(
-                                    [Part(root=DataPart(
-                                        data=cart_artifact_data,
-                                        mimeType="application/json"
-                                    ))],
-                                    name="cart"
-                                )
-                                cart_sent = True
+                            current_cart = session_state.get(
+                                "cart") or session_state.get("cart_items", [])
+                            # Only send if cart changed during this request
+                            if current_cart != initial_cart:
+                                cart_artifact_data = format_cart(session_state)
+                                if cart_artifact_data:
+                                    await updater.add_artifact(
+                                        [Part(root=DataPart(
+                                            data=cart_artifact_data,
+                                            mimeType="application/json"
+                                        ))],
+                                        name="cart"
+                                    )
+                                    cart_sent = True
 
-                        # Stream order if available and not already sent
+                        # Stream order ONLY if it was created during this request
                         if not order_sent and "current_order" in session_state:
-                            order_artifact_data = format_order(session_state)
-                            if order_artifact_data:
-                                await updater.add_artifact(
-                                    [Part(root=DataPart(
-                                        data=order_artifact_data,
-                                        mimeType="application/json"
-                                    ))],
-                                    name="order"
-                                )
-                                order_sent = True
+                            current_order = session_state.get("current_order")
+                            # Only send if order is new (different from initial) or was just created
+                            if current_order and current_order != initial_order:
+                                # Additional check: ensure order_id is different (new order)
+                                if not initial_order or current_order.get("order_id") != initial_order.get("order_id"):
+                                    order_artifact_data = format_order(
+                                        session_state)
+                                    if order_artifact_data:
+                                        await updater.add_artifact(
+                                            [Part(root=DataPart(
+                                                data=order_artifact_data,
+                                                mimeType="application/json"
+                                            ))],
+                                            name="order"
+                                        )
+                                        order_sent = True
                     except Exception as state_error:
                         # Don't fail the entire request if state check fails
                         # Log error but continue processing
@@ -286,10 +324,11 @@ class ShoppingAgentExecutor(AgentExecutor):
             session_state = updated_session.state if hasattr(
                 updated_session, 'state') else {}
 
-            # Ensure products are sent if not already sent
+            # Ensure products are sent if they were modified (not already sent)
             if not products_sent:
                 current_results = session_state.get("current_results", [])
-                if current_results:
+                # Only send if products changed during this request
+                if current_results and current_results != initial_products:
                     formatted_products = format_products(current_results)
                     if formatted_products:
                         product_data = {
@@ -304,29 +343,38 @@ class ShoppingAgentExecutor(AgentExecutor):
                             name="products"
                         )
 
-            # Ensure cart is sent if not already sent
+            # Ensure cart is sent if it was modified (not already sent)
             if not cart_sent:
-                cart_artifact_data = format_cart(session_state)
-                if cart_artifact_data:
-                    await updater.add_artifact(
-                        [Part(root=DataPart(
-                            data=cart_artifact_data,
-                            mimeType="application/json"
-                        ))],
-                        name="cart"
-                    )
+                current_cart = session_state.get(
+                    "cart") or session_state.get("cart_items", [])
+                # Only send if cart changed during this request
+                if current_cart != initial_cart:
+                    cart_artifact_data = format_cart(session_state)
+                    if cart_artifact_data:
+                        await updater.add_artifact(
+                            [Part(root=DataPart(
+                                data=cart_artifact_data,
+                                mimeType="application/json"
+                            ))],
+                            name="cart"
+                        )
 
-            # Ensure order is sent if not already sent
+            # Ensure order is sent if it was created (not already sent)
             if not order_sent:
-                order_artifact_data = format_order(session_state)
-                if order_artifact_data:
-                    await updater.add_artifact(
-                        [Part(root=DataPart(
-                            data=order_artifact_data,
-                            mimeType="application/json"
-                        ))],
-                        name="order"
-                    )
+                current_order = session_state.get("current_order")
+                # Only send if order is new (different from initial)
+                if current_order and current_order != initial_order:
+                    # Additional check: ensure order_id is different (new order)
+                    if not initial_order or current_order.get("order_id") != initial_order.get("order_id"):
+                        order_artifact_data = format_order(session_state)
+                        if order_artifact_data:
+                            await updater.add_artifact(
+                                [Part(root=DataPart(
+                                    data=order_artifact_data,
+                                    mimeType="application/json"
+                                ))],
+                                name="order"
+                            )
 
             # Complete the task
             await updater.complete()

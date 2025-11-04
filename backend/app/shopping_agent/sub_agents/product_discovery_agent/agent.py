@@ -5,7 +5,9 @@ from typing import List, Optional
 
 from .tools import text_vector_search
 
-GEMINI_MODEL = "gemini-2.5-flash"
+from app.common.config import get_settings
+
+settings = get_settings()
 
 
 class ProductResult(BaseModel):
@@ -122,7 +124,7 @@ When presenting search results, ALWAYS include:
 Remember: You are the product discovery expert. Help users find exactly what they're looking for with clear, visual results.
 """,
     description="Handles product discovery through text and image search",
-    model=GEMINI_MODEL,
+    model=settings.GEMINI_MODEL,
     tools=[text_vector_search],
     output_schema=ProductSearchOutput,
     output_key="search_results",

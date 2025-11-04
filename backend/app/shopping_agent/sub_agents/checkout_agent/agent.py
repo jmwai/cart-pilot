@@ -10,7 +10,9 @@ from .tools import (
     validate_cart_for_checkout,
 )
 
-GEMINI_MODEL = "gemini-2.5-flash"
+from app.common.config import get_settings
+
+settings = get_settings()
 
 
 class OrderItem(BaseModel):
@@ -82,14 +84,21 @@ root_agent = LlmAgent(
 - Payment is automatically processed (orders are auto-completed)
 - Cart is automatically cleared after order creation
 
-### get_order_status(order_id: str) → OrderData
+### get_order_status(order_id: Optional[str] = None) → OrderData
 **Purpose**: Check status of an existing order
 **Usage**:
-- Takes order_id to identify which order to check
+- If order_id is provided: Uses that order ID
+- If order_id is NOT provided: Automatically retrieves order from state["current_order"]
 - Returns current order status and details
 
 **When to use**:
-- User asks about order status ("what's my order status?", "check order X")
+- User asks about order status ("what's my order status?", "check my order", "show my order")
+- User wants to see order details
+
+**Important**:
+- **ALWAYS check session state first**: If user asks about "my order" or "order status" without providing an ID, call get_order_status() WITHOUT order_id parameter
+- The tool automatically retrieves the order from state["current_order"]
+- Only ask for order_id if no order is found in session state
 
 ### cancel_order(order_id: str) → bool
 **Purpose**: Cancel an existing order
@@ -143,8 +152,8 @@ root_agent = LlmAgent(
 - **Empty cart**: "Your cart is empty. Please add items before checkout."
 - **Validation failure**: Explain specific issue and suggest solution
 - **Order creation failure**: Inform user and suggest retrying
-
-## Important Notes:
+    
+    ## Important Notes:
 
 - **Never ask for shipping address**: It's automatically retrieved from profile
 - **Never ask for payment**: Orders are auto-completed (payment processed automatically)
@@ -153,9 +162,9 @@ root_agent = LlmAgent(
 - **Always store order**: Tool stores order in state["current_order"] automatically
 
 Remember: You are the checkout expert. Process orders efficiently and celebrate successful purchases with users.
-""",
+    """,
     description="Handles order creation from cart and order management",
-    model=GEMINI_MODEL,
+    model=settings.GEMINI_MODEL,
     tools=[
         create_order,
         get_order_status,

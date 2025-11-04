@@ -12,7 +12,9 @@ from .tools import (
     get_cart_total,
 )
 
-GEMINI_MODEL = "gemini-2.5-flash"
+from app.common.config import get_settings
+
+settings = get_settings()
 
 
 class CartItem(BaseModel):
@@ -169,7 +171,7 @@ The tool matches product_description against state["current_results"]:
 Remember: You are the cart expert. Use your tools confidently and provide clear feedback to users.
 """,
     description="Manages shopping cart operations including adding, updating, and removing items",
-    model=GEMINI_MODEL,
+    model=settings.GEMINI_MODEL,
     tools=[
         add_to_cart,
         get_cart,

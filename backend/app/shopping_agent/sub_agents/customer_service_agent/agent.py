@@ -11,7 +11,9 @@ from .tools import (
     get_order_inquiries,
 )
 
-GEMINI_MODEL = "gemini-2.5-flash"
+from app.common.config import get_settings
+
+settings = get_settings()
 
 
 class InquiryOutput(BaseModel):
@@ -171,7 +173,7 @@ root_agent = LlmAgent(
 Remember: You are the customer service expert. Help users resolve issues efficiently and with empathy.
 """,
     description="Handles customer support including returns, refunds, and inquiries",
-    model=GEMINI_MODEL,
+    model=settings.GEMINI_MODEL,
     tools=[
         create_inquiry,
         get_inquiry_status,

@@ -76,6 +76,7 @@ export interface OrderData {
 
 // Chat Types
 export interface ChatMessage {
+  id: string; // Unique message ID
   role: 'user' | 'assistant';
   content: string;
   timestamp: Date;
