@@ -20,7 +20,7 @@ from app.common.models import CartItem, CatalogItem
 class TestAddToCart:
     """Tests for add_to_cart() function"""
 
-    def test_add_to_cart_success(self, mock_db_session, sample_product):
+    def test_add_to_cart_success(self, mock_db_session, sample_product, mock_tool_context):
         """Test successful addition of product to cart"""
         with patch('app.shopping_agent.sub_agents.cart_agent.tools.get_db_session') as mock_session:
             mock_session.return_value.__enter__.return_value = mock_db_session
@@ -28,8 +28,15 @@ class TestAddToCart:
             # Setup mock query for product lookup
             mock_db_session.query.return_value.filter.return_value.first.return_value = sample_product
 
+            # Setup state with search results
+            mock_tool_context.state["current_results"] = [{
+                "id": "prod_123",
+                "name": "Test Running Shoes",
+                "description": "High-quality running shoes"
+            }]
+
             # Execute
-            result = add_to_cart("prod_123", 2, "session_abc")
+            result = add_to_cart(mock_tool_context, "prod_123", 2)
 
             # Assert
             assert result["product_id"] == "prod_123"
@@ -38,7 +45,7 @@ class TestAddToCart:
             assert result["picture"] == "https://example.com/shoes-large.jpg"
             mock_db_session.add.assert_called_once()
 
-    def test_add_to_cart_product_not_found(self, mock_db_session):
+    def test_add_to_cart_product_not_found(self, mock_db_session, mock_tool_context):
         """Test ValueError raised when product doesn't exist"""
         with patch('app.shopping_agent.sub_agents.cart_agent.tools.get_db_session') as mock_session:
             mock_session.return_value.__enter__.return_value = mock_db_session
@@ -46,34 +53,58 @@ class TestAddToCart:
             # Setup mock query to return None (product not found)
             mock_db_session.query.return_value.filter.return_value.first.return_value = None
 
+            # Setup state with search results
+            mock_tool_context.state["current_results"] = [{
+                "id": "prod_999",
+                "name": "Test Product",
+                "description": "Test description"
+            }]
+
             # Execute & Assert
             with pytest.raises(ValueError, match="Product prod_999 not found"):
-                add_to_cart("prod_999", 1, "session_abc")
+                add_to_cart(mock_tool_context, "prod_999", 1)
 
-    def test_add_to_cart_zero_quantity(self, mock_db_session):
+    def test_add_to_cart_zero_quantity(self, mock_db_session, mock_tool_context):
         """Test ValueError raised for zero quantity"""
+        mock_tool_context.state["current_results"] = [{
+            "id": "prod_123",
+            "name": "Test Product",
+            "description": "Test description"
+        }]
         with pytest.raises(ValueError, match="Quantity must be greater than 0"):
-            add_to_cart("prod_123", 0, "session_abc")
+            add_to_cart(mock_tool_context, "prod_123", 0)
 
-    def test_add_to_cart_negative_quantity(self, mock_db_session):
+    def test_add_to_cart_negative_quantity(self, mock_db_session, mock_tool_context):
         """Test ValueError raised for negative quantity"""
+        mock_tool_context.state["current_results"] = [{
+            "id": "prod_123",
+            "name": "Test Product",
+            "description": "Test description"
+        }]
         with pytest.raises(ValueError, match="Quantity must be greater than 0"):
-            add_to_cart("prod_123", -1, "session_abc")
+            add_to_cart(mock_tool_context, "prod_123", -1)
 
-    def test_add_to_cart_creates_uuid(self, mock_db_session, sample_product):
+    def test_add_to_cart_creates_uuid(self, mock_db_session, sample_product, mock_tool_context):
         """Test that cart_item_id is a UUID"""
         with patch('app.shopping_agent.sub_agents.cart_agent.tools.get_db_session') as mock_session:
             mock_session.return_value.__enter__.return_value = mock_db_session
             mock_db_session.query.return_value.filter.return_value.first.return_value = sample_product
 
+            # Setup state with search results
+            mock_tool_context.state["current_results"] = [{
+                "id": "prod_123",
+                "name": "Test Running Shoes",
+                "description": "High-quality running shoes"
+            }]
+
             # Execute
-            result = add_to_cart("prod_123", 1, "session_abc")
+            result = add_to_cart(mock_tool_context, "prod_123", 1)
 
             # Assert UUID format
             assert "cart_item_id" in result
             assert len(result["cart_item_id"]) > 0
 
-    def test_add_to_cart_uses_product_image_url(self, mock_db_session):
+    def test_add_to_cart_uses_product_image_url(self, mock_db_session, mock_tool_context):
         """Test that product_image_url is preferred over picture"""
         product = CatalogItem(
             id="prod_123",
@@ -86,7 +117,14 @@ class TestAddToCart:
             mock_session.return_value.__enter__.return_value = mock_db_session
             mock_db_session.query.return_value.filter.return_value.first.return_value = product
 
-            result = add_to_cart("prod_123", 1, "session_abc")
+            # Setup state with search results
+            mock_tool_context.state["current_results"] = [{
+                "id": "prod_123",
+                "name": "Test Product",
+                "description": "Test description"
+            }]
+
+            result = add_to_cart(mock_tool_context, "prod_123", 1)
 
             assert result["picture"] == "https://example.com/new.jpg"
 
@@ -94,7 +132,7 @@ class TestAddToCart:
 class TestGetCart:
     """Tests for get_cart() function"""
 
-    def test_get_cart_success(self, mock_db_session, sample_cart_item):
+    def test_get_cart_success(self, mock_db_session, sample_cart_item, mock_tool_context):
         """Test successful retrieval of cart items"""
         with patch('app.shopping_agent.sub_agents.cart_agent.tools.get_db_session') as mock_session:
             mock_session.return_value.__enter__.return_value = mock_db_session
@@ -104,7 +142,7 @@ class TestGetCart:
                 sample_cart_item]
 
             # Execute
-            result = get_cart("session_abc")
+            result = get_cart(mock_tool_context)
 
             # Assert
             assert len(result) == 1
@@ -113,7 +151,7 @@ class TestGetCart:
             assert result[0]["quantity"] == 2
             assert result[0]["name"] == "Test Running Shoes"
 
-    def test_get_cart_empty(self, mock_db_session):
+    def test_get_cart_empty(self, mock_db_session, mock_tool_context):
         """Test empty cart returns empty list"""
         with patch('app.shopping_agent.sub_agents.cart_agent.tools.get_db_session') as mock_session:
             mock_session.return_value.__enter__.return_value = mock_db_session
@@ -122,12 +160,12 @@ class TestGetCart:
             mock_db_session.query.return_value.filter.return_value.order_by.return_value.all.return_value = []
 
             # Execute
-            result = get_cart("session_abc")
+            result = get_cart(mock_tool_context)
 
             # Assert
             assert result == []
 
-    def test_get_cart_session_isolation(self, mock_db_session, sample_cart_item):
+    def test_get_cart_session_isolation(self, mock_db_session, sample_cart_item, mock_tool_context):
         """Test that cart returns only items for specified session"""
         with patch('app.shopping_agent.sub_agents.cart_agent.tools.get_db_session') as mock_session:
             mock_session.return_value.__enter__.return_value = mock_db_session
@@ -138,7 +176,7 @@ class TestGetCart:
                 sample_cart_item]
 
             # Execute
-            result = get_cart("session_abc")
+            result = get_cart(mock_tool_context)
 
             # Assert filter was called with correct session_id
             mock_query.filter.assert_called_once()
@@ -222,7 +260,7 @@ class TestRemoveFromCart:
 class TestClearCart:
     """Tests for clear_cart() function"""
 
-    def test_clear_cart_success(self, mock_db_session):
+    def test_clear_cart_success(self, mock_db_session, mock_tool_context):
         """Test successful clearing of cart"""
         with patch('app.shopping_agent.sub_agents.cart_agent.tools.get_db_session') as mock_session:
             mock_session.return_value.__enter__.return_value = mock_db_session
@@ -231,13 +269,13 @@ class TestClearCart:
             mock_db_session.query.return_value.filter.return_value.delete.return_value = 3
 
             # Execute
-            result = clear_cart("session_abc")
+            result = clear_cart(mock_tool_context)
 
             # Assert
             assert result["status"] == "cleared"
             assert result["items_removed"] == 3
 
-    def test_clear_cart_empty_cart(self, mock_db_session):
+    def test_clear_cart_empty_cart(self, mock_db_session, mock_tool_context):
         """Test clearing empty cart"""
         with patch('app.shopping_agent.sub_agents.cart_agent.tools.get_db_session') as mock_session:
             mock_session.return_value.__enter__.return_value = mock_db_session
@@ -246,7 +284,7 @@ class TestClearCart:
             mock_db_session.query.return_value.filter.return_value.delete.return_value = 0
 
             # Execute
-            result = clear_cart("session_abc")
+            result = clear_cart(mock_tool_context)
 
             # Assert
             assert result["status"] == "cleared"
@@ -256,7 +294,7 @@ class TestClearCart:
 class TestGetCartTotal:
     """Tests for get_cart_total() function"""
 
-    def test_get_cart_total_success(self, mock_db_session):
+    def test_get_cart_total_success(self, mock_db_session, mock_tool_context):
         """Test successful calculation of cart total"""
         with patch('app.shopping_agent.sub_agents.cart_agent.tools.get_db_session') as mock_session:
             mock_session.return_value.__enter__.return_value = mock_db_session
@@ -264,18 +302,27 @@ class TestGetCartTotal:
             # Setup mock queries for count and sum
             mock_query = mock_db_session.query
 
-            # First call returns count
-            mock_query.return_value.filter.return_value.scalar.return_value = 3
+            # Setup side_effect to return different values for count and sum calls
+            def scalar_side_effect(*args, **kwargs):
+                # First call (count) returns 3, second call (sum) returns 0
+                if not hasattr(scalar_side_effect, 'call_count'):
+                    scalar_side_effect.call_count = 0
+                scalar_side_effect.call_count += 1
+                if scalar_side_effect.call_count == 1:
+                    return 3
+                return 0
+
+            mock_query.return_value.filter.return_value.scalar.side_effect = scalar_side_effect
 
             # Execute
-            result = get_cart_total("session_abc")
+            result = get_cart_total(mock_tool_context)
 
             # Assert
             assert result["item_count"] == 3
-            assert result["total_items"] == 0  # sum not mocked for second call
+            assert result["total_items"] == 0
             assert result["subtotal"] == 0.0
 
-    def test_get_cart_total_empty_cart(self, mock_db_session):
+    def test_get_cart_total_empty_cart(self, mock_db_session, mock_tool_context):
         """Test cart total for empty cart"""
         with patch('app.shopping_agent.sub_agents.cart_agent.tools.get_db_session') as mock_session:
             mock_session.return_value.__enter__.return_value = mock_db_session
@@ -285,7 +332,7 @@ class TestGetCartTotal:
             mock_query.return_value.filter.return_value.scalar.return_value = 0
 
             # Execute
-            result = get_cart_total("session_abc")
+            result = get_cart_total(mock_tool_context)
 
             # Assert
             assert result["item_count"] == 0

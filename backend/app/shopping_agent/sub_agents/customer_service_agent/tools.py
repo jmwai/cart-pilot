@@ -45,7 +45,7 @@ def create_inquiry(inquiry_type: str, message: str, session_id: str, order_id: O
             "message": message,
             "status": "open",
             "order_id": order_id,
-            "created_at": inquiry.created_at.isoformat(),
+            "created_at": inquiry.created_at.isoformat() if inquiry.created_at else datetime.now().isoformat(),
             "response": "Your inquiry has been submitted and will be reviewed.",
         }
 

@@ -15,7 +15,7 @@ from app.common.models import CatalogItem
 class TestTextVectorSearch:
     """Tests for text_vector_search() function"""
 
-    def test_text_vector_search_success(self, mock_db_session):
+    def test_text_vector_search_success(self, mock_db_session, mock_tool_context):
         """Test successful text vector search"""
         with patch('app.shopping_agent.sub_agents.product_discovery_agent.tools.get_db_session') as mock_session:
             mock_session.return_value.__enter__.return_value = mock_db_session
@@ -23,14 +23,16 @@ class TestTextVectorSearch:
             # Mock the execute call for raw SQL
             mock_result = MagicMock()
             mock_row = Mock()
-            mock_row.__getitem__.side_effect = lambda i: [
+            # Fix row indexing - rows are accessed by index, not by lambda
+            mock_row.__getitem__ = Mock(side_effect=lambda i: [
                 "prod_123",
                 "Running Shoes",
                 "High-quality running shoes",
                 "https://example.com/pic.jpg",
                 "https://example.com/large.jpg",
+                1999,  # price_usd_units
                 0.85
-            ][i]
+            ][i])
             mock_result.__iter__.return_value = [mock_row]
             mock_db_session.execute.return_value = mock_result
 
@@ -39,7 +41,7 @@ class TestTextVectorSearch:
                 mock_embed.return_value = [0.1] * 1408
 
                 # Execute
-                result = text_vector_search("running shoes")
+                result = text_vector_search(mock_tool_context, "running shoes")
 
                 # Assert
                 assert len(result) == 1
@@ -48,7 +50,7 @@ class TestTextVectorSearch:
                 assert result[0]["distance"] == 0.85
                 assert result[0]["product_image_url"] == "https://example.com/large.jpg"
 
-    def test_text_vector_search_empty_query(self, mock_db_session):
+    def test_text_vector_search_empty_query(self, mock_db_session, mock_tool_context):
         """Test handling of empty query"""
         with patch('app.shopping_agent.sub_agents.product_discovery_agent.tools.get_db_session') as mock_session:
             mock_session.return_value.__enter__.return_value = mock_db_session
@@ -60,11 +62,11 @@ class TestTextVectorSearch:
             with patch('app.shopping_agent.sub_agents.product_discovery_agent.tools._embed_text_1408') as mock_embed:
                 mock_embed.return_value = [0.1] * 1408
 
-                result = text_vector_search("")
+                result = text_vector_search(mock_tool_context, "")
 
                 assert isinstance(result, list)
 
-    def test_text_vector_search_no_results(self, mock_db_session):
+    def test_text_vector_search_no_results(self, mock_db_session, mock_tool_context):
         """Test empty results when no matches"""
         with patch('app.shopping_agent.sub_agents.product_discovery_agent.tools.get_db_session') as mock_session:
             mock_session.return_value.__enter__.return_value = mock_db_session
@@ -76,27 +78,29 @@ class TestTextVectorSearch:
             with patch('app.shopping_agent.sub_agents.product_discovery_agent.tools._embed_text_1408') as mock_embed:
                 mock_embed.return_value = [0.1] * 1408
 
-                result = text_vector_search("nonexistent product")
+                result = text_vector_search(
+                    mock_tool_context, "nonexistent product")
 
                 assert result == []
 
-    def test_text_vector_search_limit_10(self, mock_db_session):
+    def test_text_vector_search_limit_10(self, mock_db_session, mock_tool_context):
         """Test that results are limited to 10 items"""
         with patch('app.shopping_agent.sub_agents.product_discovery_agent.tools.get_db_session') as mock_session:
             mock_session.return_value.__enter__.return_value = mock_db_session
 
             # Create 15 mock rows
             mock_rows = []
-            for i in range(15):
+            for idx in range(15):
                 mock_row = Mock()
-                mock_row.__getitem__.side_effect = lambda i, idx=i: [
+                mock_row.__getitem__ = Mock(side_effect=lambda i, idx=idx: [
                     f"prod_{idx}",
                     f"Product {idx}",
                     "Description",
                     "pic.jpg",
                     "large.jpg",
+                    1999,
                     0.5
-                ][i]
+                ][i])
                 mock_rows.append(mock_row)
 
             mock_result = MagicMock()
@@ -106,13 +110,13 @@ class TestTextVectorSearch:
             with patch('app.shopping_agent.sub_agents.product_discovery_agent.tools._embed_text_1408') as mock_embed:
                 mock_embed.return_value = [0.1] * 1408
 
-                result = text_vector_search("test")
+                result = text_vector_search(mock_tool_context, "test")
 
                 # Note: The LIMIT 10 is in the SQL, so we'd only get 10 back
                 # But our mock might return all 15
                 assert len(result) <= 15
 
-    def test_text_vector_search_embedding_called(self, mock_db_session):
+    def test_text_vector_search_embedding_called(self, mock_db_session, mock_tool_context):
         """Test that embedding function is called"""
         with patch('app.shopping_agent.sub_agents.product_discovery_agent.tools.get_db_session') as mock_session:
             mock_session.return_value.__enter__.return_value = mock_db_session
@@ -124,12 +128,12 @@ class TestTextVectorSearch:
             with patch('app.shopping_agent.sub_agents.product_discovery_agent.tools._embed_text_1408') as mock_embed:
                 mock_embed.return_value = [0.1] * 1408
 
-                text_vector_search("running shoes")
+                text_vector_search(mock_tool_context, "running shoes")
 
                 # Verify embedding was called
                 mock_embed.assert_called_once_with("running shoes")
 
-    def test_text_vector_search_sql_execution(self, mock_db_session):
+    def test_text_vector_search_sql_execution(self, mock_db_session, mock_tool_context):
         """Test that raw SQL is executed with pgvector"""
         with patch('app.shopping_agent.sub_agents.product_discovery_agent.tools.get_db_session') as mock_session:
             mock_session.return_value.__enter__.return_value = mock_db_session
@@ -141,7 +145,7 @@ class TestTextVectorSearch:
             with patch('app.shopping_agent.sub_agents.product_discovery_agent.tools._embed_text_1408') as mock_embed:
                 mock_embed.return_value = [0.1] * 1408
 
-                text_vector_search("test")
+                text_vector_search(mock_tool_context, "test")
 
                 # Verify execute was called (raw SQL execution)
                 assert mock_db_session.execute.called
@@ -150,7 +154,7 @@ class TestTextVectorSearch:
 class TestImageVectorSearch:
     """Tests for image_vector_search() function"""
 
-    def test_image_vector_search_success(self, mock_db_session):
+    def test_image_vector_search_success(self, mock_db_session, mock_tool_context):
         """Test successful image vector search"""
         with patch('app.shopping_agent.sub_agents.product_discovery_agent.tools.get_db_session') as mock_session:
             mock_session.return_value.__enter__.return_value = mock_db_session
@@ -158,14 +162,15 @@ class TestImageVectorSearch:
             # Mock the execute call
             mock_result = MagicMock()
             mock_row = Mock()
-            mock_row.__getitem__.side_effect = lambda i: [
+            mock_row.__getitem__ = Mock(side_effect=lambda i: [
                 "prod_123",
                 "Running Shoes",
                 "High-quality running shoes",
                 "https://example.com/pic.jpg",
                 "https://example.com/large.jpg",
+                1999,  # price_usd_units
                 0.92
-            ][i]
+            ][i])
             mock_result.__iter__.return_value = [mock_row]
             mock_db_session.execute.return_value = mock_result
 
@@ -175,7 +180,7 @@ class TestImageVectorSearch:
 
                 # Execute
                 image_bytes = b"fake_image_data"
-                result = image_vector_search(image_bytes)
+                result = image_vector_search(mock_tool_context, image_bytes)
 
                 # Assert
                 assert len(result) == 1
@@ -183,7 +188,7 @@ class TestImageVectorSearch:
                 assert result[0]["name"] == "Running Shoes"
                 assert result[0]["distance"] == 0.92
 
-    def test_image_vector_search_invalid_bytes(self, mock_db_session):
+    def test_image_vector_search_invalid_bytes(self, mock_db_session, mock_tool_context):
         """Test handling of invalid image data"""
         with patch('app.shopping_agent.sub_agents.product_discovery_agent.tools.get_db_session') as mock_session:
             mock_session.return_value.__enter__.return_value = mock_db_session
@@ -196,11 +201,11 @@ class TestImageVectorSearch:
                 mock_embed.return_value = [0.1] * 1408
 
                 # Execute with empty bytes
-                result = image_vector_search(b"")
+                result = image_vector_search(mock_tool_context, b"")
 
                 assert isinstance(result, list)
 
-    def test_image_vector_search_no_results(self, mock_db_session):
+    def test_image_vector_search_no_results(self, mock_db_session, mock_tool_context):
         """Test empty results when no matches"""
         with patch('app.shopping_agent.sub_agents.product_discovery_agent.tools.get_db_session') as mock_session:
             mock_session.return_value.__enter__.return_value = mock_db_session
@@ -212,27 +217,28 @@ class TestImageVectorSearch:
             with patch('app.shopping_agent.sub_agents.product_discovery_agent.tools._embed_image_1408_from_bytes') as mock_embed:
                 mock_embed.return_value = [0.1] * 1408
 
-                result = image_vector_search(b"fake_image")
+                result = image_vector_search(mock_tool_context, b"fake_image")
 
                 assert result == []
 
-    def test_image_vector_search_limit_10(self, mock_db_session):
+    def test_image_vector_search_limit_10(self, mock_db_session, mock_tool_context):
         """Test that results are limited to 10 items"""
         with patch('app.shopping_agent.sub_agents.product_discovery_agent.tools.get_db_session') as mock_session:
             mock_session.return_value.__enter__.return_value = mock_db_session
 
             # Create mock rows
             mock_rows = []
-            for i in range(12):
+            for idx in range(12):
                 mock_row = Mock()
-                mock_row.__getitem__.side_effect = lambda i, idx=i: [
+                mock_row.__getitem__ = Mock(side_effect=lambda i, idx=idx: [
                     f"prod_{idx}",
                     f"Product {idx}",
                     "Description",
                     "pic.jpg",
                     "large.jpg",
+                    1999,
                     0.5
-                ][i]
+                ][i])
                 mock_rows.append(mock_row)
 
             mock_result = MagicMock()
@@ -242,12 +248,12 @@ class TestImageVectorSearch:
             with patch('app.shopping_agent.sub_agents.product_discovery_agent.tools._embed_image_1408_from_bytes') as mock_embed:
                 mock_embed.return_value = [0.1] * 1408
 
-                result = image_vector_search(b"fake_image")
+                result = image_vector_search(mock_tool_context, b"fake_image")
 
                 # LIMIT 10 in SQL, but mock returns all
                 assert len(result) <= 12
 
-    def test_image_vector_search_embedding_called(self, mock_db_session):
+    def test_image_vector_search_embedding_called(self, mock_db_session, mock_tool_context):
         """Test that image embedding function is called"""
         with patch('app.shopping_agent.sub_agents.product_discovery_agent.tools.get_db_session') as mock_session:
             mock_session.return_value.__enter__.return_value = mock_db_session
@@ -260,7 +266,7 @@ class TestImageVectorSearch:
                 mock_embed.return_value = [0.1] * 1408
 
                 image_bytes = b"fake_image_data"
-                image_vector_search(image_bytes)
+                image_vector_search(mock_tool_context, image_bytes)
 
                 # Verify embedding was called
                 mock_embed.assert_called_once_with(image_bytes)
@@ -269,16 +275,16 @@ class TestImageVectorSearch:
 class TestEdgeCases:
     """Tests for edge cases and error handling"""
 
-    def test_database_connection_error(self, mock_db_session):
+    def test_database_connection_error(self, mock_db_session, mock_tool_context):
         """Test handling of database failures"""
         with patch('app.shopping_agent.sub_agents.product_discovery_agent.tools.get_db_session') as mock_session:
             mock_session.return_value.__enter__.side_effect = Exception(
                 "Database connection failed")
 
             with pytest.raises(Exception):
-                text_vector_search("test")
+                text_vector_search(mock_tool_context, "test")
 
-    def test_embedding_service_error(self, mock_db_session):
+    def test_embedding_service_error(self, mock_db_session, mock_tool_context):
         """Test handling of Vertex AI API failures"""
         with patch('app.shopping_agent.sub_agents.product_discovery_agent.tools.get_db_session') as mock_session:
             mock_session.return_value.__enter__.return_value = mock_db_session
@@ -288,9 +294,9 @@ class TestEdgeCases:
                     "Vertex AI service unavailable")
 
                 with pytest.raises(Exception):
-                    text_vector_search("test")
+                    text_vector_search(mock_tool_context, "test")
 
-    def test_vector_search_uses_pgvector_syntax(self, mock_db_session):
+    def test_vector_search_uses_pgvector_syntax(self, mock_db_session, mock_tool_context):
         """Test that pgvector distance operator is used"""
         with patch('app.shopping_agent.sub_agents.product_discovery_agent.tools.get_db_session') as mock_session:
             mock_session.return_value.__enter__.return_value = mock_db_session
@@ -302,7 +308,7 @@ class TestEdgeCases:
             with patch('app.shopping_agent.sub_agents.product_discovery_agent.tools._embed_text_1408') as mock_embed:
                 mock_embed.return_value = [0.1] * 1408
 
-                text_vector_search("test")
+                text_vector_search(mock_tool_context, "test")
 
                 # Verify execute was called (which uses raw SQL with pgvector)
                 call_args = mock_db_session.execute.call_args

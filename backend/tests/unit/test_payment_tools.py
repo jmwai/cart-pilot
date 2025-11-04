@@ -144,7 +144,7 @@ class TestProcessPayment:
 
                 process_payment("order_123", "credit_card")
 
-                # Verify order status was updated
+                # Verify order status was updated to completed
                 assert sample_order.status == "completed"
 
     def test_process_payment_generates_transaction_id(self, mock_db_session, sample_order):

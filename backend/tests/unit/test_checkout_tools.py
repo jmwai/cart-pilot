@@ -17,7 +17,7 @@ from app.common.models import CartItem, Order, OrderItem, CatalogItem
 class TestCreateOrder:
     """Tests for create_order() function"""
 
-    def test_create_order_success(self, mock_db_session, sample_cart_item):
+    def test_create_order_success(self, mock_db_session, sample_cart_item, mock_tool_context):
         """Test successful order creation"""
         with patch('app.shopping_agent.sub_agents.checkout_agent.tools.get_db_session') as mock_session:
             mock_session.return_value.__enter__.return_value = mock_db_session
@@ -27,17 +27,17 @@ class TestCreateOrder:
                 sample_cart_item]
 
             # Execute
-            result = create_order("session_abc", "123 Main St, NY")
+            result = create_order(mock_tool_context)
 
             # Assert
             assert "order_id" in result
-            assert result["status"] == "pending"
-            assert result["shipping_address"] == "123 Main St, NY"
+            assert result["status"] == "completed"
+            assert "shipping_address" in result
             assert len(result["items"]) == 1
             assert result["items"][0]["product_id"] == "prod_123"
             assert result["items"][0]["quantity"] == 2
 
-    def test_create_order_empty_cart(self, mock_db_session):
+    def test_create_order_empty_cart(self, mock_db_session, mock_tool_context):
         """Test ValueError raised for empty cart"""
         with patch('app.shopping_agent.sub_agents.checkout_agent.tools.get_db_session') as mock_session:
             mock_session.return_value.__enter__.return_value = mock_db_session
@@ -47,9 +47,9 @@ class TestCreateOrder:
 
             # Execute & Assert
             with pytest.raises(ValueError, match="Cart is empty"):
-                create_order("session_abc", "123 Main St, NY")
+                create_order(mock_tool_context)
 
-    def test_create_order_clears_cart(self, mock_db_session, sample_cart_item):
+    def test_create_order_clears_cart(self, mock_db_session, sample_cart_item, mock_tool_context):
         """Test that cart is cleared after order creation"""
         with patch('app.shopping_agent.sub_agents.checkout_agent.tools.get_db_session') as mock_session:
             mock_session.return_value.__enter__.return_value = mock_db_session
@@ -60,20 +60,20 @@ class TestCreateOrder:
                 sample_cart_item]
 
             # Execute
-            create_order("session_abc", "123 Main St, NY")
+            create_order(mock_tool_context)
 
             # Assert cart deletion was called
             # Should be called after creating order
             assert mock_db_session.add.call_count >= 1  # Order + OrderItems
 
-    def test_create_order_generates_uuid(self, mock_db_session, sample_cart_item):
+    def test_create_order_generates_uuid(self, mock_db_session, sample_cart_item, mock_tool_context):
         """Test that order_id is a UUID"""
         with patch('app.shopping_agent.sub_agents.checkout_agent.tools.get_db_session') as mock_session:
             mock_session.return_value.__enter__.return_value = mock_db_session
             mock_db_session.query.return_value.filter.return_value.all.return_value = [
                 sample_cart_item]
 
-            result = create_order("session_abc", "123 Main St, NY")
+            result = create_order(mock_tool_context)
 
             assert "order_id" in result
             assert len(result["order_id"]) > 0
@@ -95,8 +95,13 @@ class TestGetOrderStatus:
             # Setup mock query
             mock_db_session.query.return_value.filter.return_value.first.return_value = sample_order
 
+            # Create mock tool context
+            from unittest.mock import Mock
+            mock_tool_context = Mock()
+            mock_tool_context.state = {}
+
             # Execute
-            result = get_order_status("order_123")
+            result = get_order_status(mock_tool_context, "order_123")
 
             # Assert
             assert result["order_id"] == "order_123"
@@ -112,9 +117,14 @@ class TestGetOrderStatus:
             # Setup mock query to return None
             mock_db_session.query.return_value.filter.return_value.first.return_value = None
 
+            # Create mock tool context
+            from unittest.mock import Mock
+            mock_tool_context = Mock()
+            mock_tool_context.state = {}
+
             # Execute & Assert
             with pytest.raises(ValueError, match="Order order_999 not found"):
-                get_order_status("order_999")
+                get_order_status(mock_tool_context, "order_999")
 
 
 class TestCancelOrder:
@@ -128,8 +138,13 @@ class TestCancelOrder:
             # Setup mock query
             mock_db_session.query.return_value.filter.return_value.first.return_value = sample_order
 
+            # Create mock tool context
+            from unittest.mock import Mock
+            mock_tool_context = Mock()
+            mock_tool_context.state = {}
+
             # Execute
-            result = cancel_order("order_123")
+            result = cancel_order(mock_tool_context, "order_123")
 
             # Assert
             assert result["order_id"] == "order_123"
@@ -145,9 +160,14 @@ class TestCancelOrder:
             # Setup mock query to return None
             mock_db_session.query.return_value.filter.return_value.first.return_value = None
 
+            # Create mock tool context
+            from unittest.mock import Mock
+            mock_tool_context = Mock()
+            mock_tool_context.state = {}
+
             # Execute & Assert
             with pytest.raises(ValueError, match="Order order_999 not found"):
-                cancel_order("order_999")
+                cancel_order(mock_tool_context, "order_999")
 
     def test_cancel_order_completed_order(self, mock_db_session):
         """Test ValueError raised for completed order"""
@@ -162,9 +182,14 @@ class TestCancelOrder:
             mock_session.return_value.__enter__.return_value = mock_db_session
             mock_db_session.query.return_value.filter.return_value.first.return_value = completed_order
 
+            # Create mock tool context
+            from unittest.mock import Mock
+            mock_tool_context = Mock()
+            mock_tool_context.state = {}
+
             # Execute & Assert
             with pytest.raises(ValueError, match="Cannot cancel order with status: completed"):
-                cancel_order("order_123")
+                cancel_order(mock_tool_context, "order_123")
 
     def test_cancel_order_only_pending_or_processing(self, mock_db_session):
         """Test that only pending/processing orders can be cancelled"""
@@ -179,8 +204,13 @@ class TestCancelOrder:
             mock_session.return_value.__enter__.return_value = mock_db_session
             mock_db_session.query.return_value.filter.return_value.first.return_value = pending_order
 
+            # Create mock tool context
+            from unittest.mock import Mock
+            mock_tool_context = Mock()
+            mock_tool_context.state = {}
+
             # Execute
-            result = cancel_order("order_123")
+            result = cancel_order(mock_tool_context, "order_123")
 
             # Assert
             assert result["status"] == "cancelled"
@@ -189,7 +219,7 @@ class TestCancelOrder:
 class TestValidateCartForCheckout:
     """Tests for validate_cart_for_checkout() function"""
 
-    def test_validate_cart_valid(self, mock_db_session):
+    def test_validate_cart_valid(self, mock_db_session, mock_tool_context):
         """Test validation for valid cart"""
         with patch('app.shopping_agent.sub_agents.checkout_agent.tools.get_db_session') as mock_session:
             mock_session.return_value.__enter__.return_value = mock_db_session
@@ -198,14 +228,14 @@ class TestValidateCartForCheckout:
             mock_db_session.query.return_value.filter.return_value.scalar.return_value = 3
 
             # Execute
-            result = validate_cart_for_checkout("session_abc")
+            result = validate_cart_for_checkout(mock_tool_context)
 
             # Assert
             assert result["valid"] is True
             assert len(result["errors"]) == 0
             assert result["item_count"] == 3
 
-    def test_validate_cart_empty(self, mock_db_session):
+    def test_validate_cart_empty(self, mock_db_session, mock_tool_context):
         """Test validation for empty cart"""
         with patch('app.shopping_agent.sub_agents.checkout_agent.tools.get_db_session') as mock_session:
             mock_session.return_value.__enter__.return_value = mock_db_session
@@ -214,7 +244,7 @@ class TestValidateCartForCheckout:
             mock_db_session.query.return_value.filter.return_value.scalar.return_value = 0
 
             # Execute
-            result = validate_cart_for_checkout("session_abc")
+            result = validate_cart_for_checkout(mock_tool_context)
 
             # Assert
             assert result["valid"] is False
@@ -222,13 +252,13 @@ class TestValidateCartForCheckout:
             assert "Cart is empty" in result["errors"]
             assert result["item_count"] == 0
 
-    def test_validate_cart_returns_warnings(self, mock_db_session):
+    def test_validate_cart_returns_warnings(self, mock_db_session, mock_tool_context):
         """Test that warnings list is returned"""
         with patch('app.shopping_agent.sub_agents.checkout_agent.tools.get_db_session') as mock_session:
             mock_session.return_value.__enter__.return_value = mock_db_session
             mock_db_session.query.return_value.filter.return_value.scalar.return_value = 1
 
-            result = validate_cart_for_checkout("session_abc")
+            result = validate_cart_for_checkout(mock_tool_context)
 
             assert "warnings" in result
             assert isinstance(result["warnings"], list)

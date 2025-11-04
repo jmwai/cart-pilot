@@ -49,7 +49,8 @@ def sample_product():
         name="Test Running Shoes",
         description="High-quality running shoes",
         picture="https://example.com/shoes.jpg",
-        product_image_url="https://example.com/shoes-large.jpg"
+        product_image_url="https://example.com/shoes-large.jpg",
+        price_usd_units=49.99
     )
 
 
@@ -120,7 +121,7 @@ def sample_payment(sample_order, sample_mandate):
 @pytest.fixture
 def sample_inquiry(sample_order):
     """Sample customer inquiry"""
-    return CustomerInquiry(
+    inquiry = CustomerInquiry(
         inquiry_id="inquiry_123",
         session_id="session_abc",
         inquiry_type="return",
@@ -128,6 +129,29 @@ def sample_inquiry(sample_order):
         related_order_id="order_123",
         status="open"
     )
+    inquiry.created_at = datetime.now()
+    return inquiry
+
+
+@pytest.fixture
+def mock_tool_context():
+    """Create a mock ToolContext for ADK tools"""
+    from google.adk.tools import ToolContext
+
+    # Create mock session
+    mock_session = Mock()
+    mock_session.id = "session_abc"
+
+    # Create mock invocation context
+    mock_invocation_context = Mock()
+    mock_invocation_context.session = mock_session
+
+    # Create mock tool context
+    tool_context = Mock(spec=ToolContext)
+    tool_context.state = {}
+    tool_context._invocation_context = mock_invocation_context
+
+    return tool_context
 
 
 # Mock data generators
