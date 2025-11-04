@@ -10,18 +10,15 @@ class Settings(BaseSettings):
     REGION: str = Field("europe-west1", description="region")
     GOOGLE_API_KEY: str = Field(..., description="Google API key")
 
-    # Database (read-only) - Optional when using AlloyDB connector
     DB_HOST: Optional[str] = Field(None)
     DB_PORT: int = Field(5432)
     DB_NAME: Optional[str] = Field(None)
     DB_USER: str = Field("postgres")
     DB_PASSWORD: Optional[str] = Field(None)
 
-    # Limits
     API_TOP_K_MAX: int = Field(50)
     MAX_UPLOAD_MB: int = Field(10)
 
-    # AI Model Configuration
     GEMINI_MODEL: str = Field("gemini-2.5-pro",
                               description="Gemini model to use for agents")
 
