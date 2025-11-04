@@ -31,7 +31,7 @@ async function getRelatedProducts(excludeId: string, limit: number = 4): Promise
     const shuffled = filtered.sort(() => Math.random() - 0.5);
     return shuffled.slice(0, limit);
   } catch (error) {
-    console.error('Failed to fetch related products:', error);
+    console.error('Failed to fetch related products', error);
     return [];
   }
 }
