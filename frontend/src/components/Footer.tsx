@@ -7,7 +7,7 @@ export default function Footer() {
         <div className="grid grid-cols-2 md:grid-cols-2 gap-8">
 
           <div>
-            <h3 className="font-bold text-gray-900 mb-4">Sole Search</h3>
+            <h3 className="font-bold text-gray-900 mb-4">Cart Pilot</h3>
             <p className="text-gray-600 text-sm">This is not a real store. It is a demo for cloud run hackathon. Built with 
               <Link href="https://google.github.io/adk-docs/" className="text-blue-500 hover:text-blue-600">Agent Development Kit</Link>
             </p>
@@ -15,7 +15,7 @@ export default function Footer() {
         </div>
 
         <div className="mt-8 pt-8 border-t border-gray-200 text-center text-sm text-gray-600">
-          ©2025 Sole Search. All Rights Reserved.
+          ©2025 Cart Pilot. All Rights Reserved.
         </div>
       </div>
     </footer>

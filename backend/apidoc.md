@@ -1,8 +1,8 @@
-# Shopping Orchestrator API Documentation
+# Cart Pilot API Documentation
 
 ## Overview
 
-The Shopping Orchestrator is an AI-powered e-commerce assistant that coordinates between specialized agents to help users complete their shopping journey. It supports product discovery, cart management, checkout, payment processing, and customer service.
+The Cart Pilot is an AI-powered e-commerce assistant that coordinates between specialized agents to help users complete their shopping journey. It supports product discovery, cart management, checkout, payment processing, and customer service.
 
 **Agent Name:** `shopping_agent`
 
@@ -252,7 +252,7 @@ GET /healthz
 
 ## Agent Descriptions
 
-### Shopping Orchestrator
+### Cart Pilot
 - **Purpose:** Routes requests to specialized agents
 - **Description:** "Orchestrates shopping workflow by routing to specialized agents"
 
@@ -313,7 +313,7 @@ This script will:
 
 ### Overview
 
-This section provides a complete guide for implementing a Next.js chatbot frontend using the official A2A JavaScript SDK to interact with the Shopping Orchestrator.
+This section provides a complete guide for implementing a Next.js chatbot frontend using the official A2A JavaScript SDK to interact with Cart Pilot.
 
 **References:**
 - [A2A JavaScript SDK](https://github.com/a2aproject/a2a-js)

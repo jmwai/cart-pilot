@@ -1,8 +1,8 @@
-# Shopping Orchestrator - AI-Powered E-commerce Agent Platform
+# Cart Pilot - AI-Powered Shopping Assistant
 
 > **Note**: Update the badge URL in this README with your GitHub username and repository name.
 
-Multi-agent AI system for e-commerce shopping assistance built with Google ADK and deployed on Cloud Run.
+Multi-agent AI system for e-commerce shopping assistance built with Google ADK and deployed on Cloud Run. Cart Pilot uses AI agents to create a futuristic shopping experience where intelligent assistants orchestrate your entire shopping journey.
 
 ## 🎯 Agent-Driven Architecture
 

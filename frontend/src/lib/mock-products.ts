@@ -1,6 +1,6 @@
 import { Product } from '@/types';
 
-// Mock product data based on the Sole Search reference images
+// Mock product data for Cart Pilot
 export const mockProducts: Product[] = [
   {
     id: 'air-jordan-1',

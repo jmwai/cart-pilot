@@ -1,5 +1,5 @@
 """
-SQLAlchemy ORM models for the shopping orchestrator application.
+SQLAlchemy ORM models for the Cart Pilot application.
 All models consolidated in this single file.
 """
 from __future__ import annotations

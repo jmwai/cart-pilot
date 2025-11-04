@@ -5,8 +5,8 @@ This guide explains how to set up automated deployment to Google Cloud Run via G
 ## Architecture Overview
 
 The project deploys as two separate Cloud Run services:
-- **Backend Service** (`backend-service`): FastAPI application with A2A protocol support
-- **Frontend Service** (`frontend-service`): Next.js standalone application
+- **Backend Service** (`cart-pilot-backend`): FastAPI application with A2A protocol support
+- **Frontend Service** (`cart-pilot-frontend`): Next.js standalone application
 
 ## Deployment Workflow
 
@@ -22,7 +22,7 @@ The deployment workflow (`.github/workflows/deploy.yml`) automatically:
 
 Ensure you have:
 - GCP Project ID: `gemini-adk-vertex-2025`
-- Artifact Registry repository: `cloud-run-agent` (in region `europe-west1`)
+- Artifact Registry repository: `cart-pilot` (in region `europe-west1`)
 - Cloud Run services created or permissions to create them
 
 ### 2. Create Artifact Registry Repository
@@ -30,11 +30,11 @@ Ensure you have:
 If the repository doesn't exist, create it:
 
 ```bash
-gcloud artifacts repositories create cloud-run-agent \
+gcloud artifacts repositories create cart-pilot \
   --repository-format=docker \
   --location=europe-west1 \
   --project=gemini-adk-vertex-2025 \
-  --description="Docker images for Cloud Run services"
+  --description="Docker images for Cart Pilot Cloud Run services"
 ```
 
 ### 3. Create Service Account
@@ -96,8 +96,8 @@ Add the following secrets to your GitHub repository:
 If the backend service doesn't exist, create it manually first:
 
 ```bash
-gcloud run deploy backend-service \
-  --image europe-west1-docker.pkg.dev/gemini-adk-vertex-2025/cloud-run-agent/backend-service:latest \
+gcloud run deploy cart-pilot-backend \
+  --image europe-west1-docker.pkg.dev/gemini-adk-vertex-2025/cart-pilot/cart-pilot-backend:latest \
   --region europe-west1 \
   --platform managed \
   --allow-unauthenticated \
@@ -150,11 +150,11 @@ If you need to deploy manually:
 
 ```bash
 cd backend
-docker build -t europe-west1-docker.pkg.dev/gemini-adk-vertex-2025/cloud-run-agent/backend-service:manual .
-docker push europe-west1-docker.pkg.dev/gemini-adk-vertex-2025/cloud-run-agent/backend-service:manual
+docker build -t europe-west1-docker.pkg.dev/gemini-adk-vertex-2025/cart-pilot/cart-pilot-backend:manual .
+docker push europe-west1-docker.pkg.dev/gemini-adk-vertex-2025/cart-pilot/cart-pilot-backend:manual
 
-gcloud run deploy backend-service \
-  --image europe-west1-docker.pkg.dev/gemini-adk-vertex-2025/cloud-run-agent/backend-service:manual \
+gcloud run deploy cart-pilot-backend \
+  --image europe-west1-docker.pkg.dev/gemini-adk-vertex-2025/cart-pilot/cart-pilot-backend:manual \
   --region europe-west1 \
   --platform managed \
   --allow-unauthenticated
@@ -165,15 +165,15 @@ gcloud run deploy backend-service \
 ```bash
 cd frontend
 docker build \
-  --build-arg NEXT_PUBLIC_AGENT_CARD_URL="https://backend-service-<hash>-ew.a.run.app/.well-known/agent-card.json" \
-  --build-arg NEXT_PUBLIC_API_BASE_URL="https://backend-service-<hash>-ew.a.run.app" \
+  --build-arg NEXT_PUBLIC_AGENT_CARD_URL="https://cart-pilot-backend-<hash>-ew.a.run.app/.well-known/agent-card.json" \
+  --build-arg NEXT_PUBLIC_API_BASE_URL="https://cart-pilot-backend-<hash>-ew.a.run.app" \
   --build-arg NEXT_PUBLIC_DEFAULT_USER_ID="user_guest" \
-  -t europe-west1-docker.pkg.dev/gemini-adk-vertex-2025/cloud-run-agent/frontend-service:manual .
+  -t europe-west1-docker.pkg.dev/gemini-adk-vertex-2025/cart-pilot/cart-pilot-frontend:manual .
 
-docker push europe-west1-docker.pkg.dev/gemini-adk-vertex-2025/cloud-run-agent/frontend-service:manual
+docker push europe-west1-docker.pkg.dev/gemini-adk-vertex-2025/cart-pilot/cart-pilot-frontend:manual
 
-gcloud run deploy frontend-service \
-  --image europe-west1-docker.pkg.dev/gemini-adk-vertex-2025/cloud-run-agent/frontend-service:manual \
+gcloud run deploy cart-pilot-frontend \
+  --image europe-west1-docker.pkg.dev/gemini-adk-vertex-2025/cart-pilot/cart-pilot-frontend:manual \
   --region europe-west1 \
   --platform managed \
   --allow-unauthenticated
@@ -204,7 +204,7 @@ gcloud run deploy frontend-service \
 - Verify Artifact Registry repository exists
 - Check Cloud Run service permissions
 - Ensure backend service exists before deploying frontend
-- Review Cloud Run logs: `gcloud run services logs read backend-service --region europe-west1`
+- Review Cloud Run logs: `gcloud run services logs read cart-pilot-backend --region europe-west1`
 
 ### Frontend Can't Connect to Backend
 
@@ -217,15 +217,15 @@ gcloud run deploy frontend-service \
 View service URLs:
 ```bash
 # Backend URL
-gcloud run services describe backend-service --region europe-west1 --format 'value(status.url)'
+gcloud run services describe cart-pilot-backend --region europe-west1 --format 'value(status.url)'
 
 # Frontend URL
-gcloud run services describe frontend-service --region europe-west1 --format 'value(status.url)'
+gcloud run services describe cart-pilot-frontend --region europe-west1 --format 'value(status.url)'
 ```
 
 View logs:
 ```bash
-gcloud run services logs read backend-service --region europe-west1 --limit 50
-gcloud run services logs read frontend-service --region europe-west1 --limit 50
+gcloud run services logs read cart-pilot-backend --region europe-west1 --limit 50
+gcloud run services logs read cart-pilot-frontend --region europe-west1 --limit 50
 ```
 

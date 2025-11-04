@@ -2,7 +2,7 @@
 
 ## Overview
 
-Successfully implemented a complete e-commerce frontend for Sole Search with AI-powered shopping assistant integration. The application follows an **agent-driven architecture** where product discovery, cart management, checkout, payments, and customer support are all handled through the AI chat interface. The UI serves as a visual catalog while the agent orchestrates all shopping operations.
+Successfully implemented a complete e-commerce frontend for Cart Pilot with AI-powered shopping assistant integration. The application follows an **agent-driven architecture** where product discovery, cart management, checkout, payments, and customer support are all handled through the AI chat interface. The UI serves as a visual catalog while the agent orchestrates all shopping operations.
 
 ## Architecture Decision: Agent-Driven Shopping
 
@@ -72,7 +72,7 @@ frontend/src/
 
 **4. Footer Component** (`components/Footer.tsx`)
 - Four-column layout
-- Links: Sole Search, Quick Links, Shop, Follow Us
+- Links: Cart Pilot, Quick Links, Shop, Follow Us
 - Social media icons
 - Copyright notice
 
