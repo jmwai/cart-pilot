@@ -13,7 +13,7 @@ def create_payment_mandate(order_id: str, payment_method: str) -> Dict[str, Any]
     Create AP2 payment mandate.
 
     Args:
-        order_id: Order identifier
+        order_id: Order identifier.
         payment_method: Payment method (e.g., 'credit_card', 'paypal')
 
     Returns:
