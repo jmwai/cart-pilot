@@ -133,11 +133,26 @@ class TestProcessPayment:
                 mock_mandate.assert_called_once_with(
                     "order_123", "credit_card")
 
-    def test_process_payment_updates_order_status(self, mock_db_session, sample_order):
+    def test_process_payment_updates_order_status(self, mock_db_session, sample_order, sample_mandate):
         """Test that order status is updated to 'completed'"""
         with patch('app.payment_agent.tools.get_db_session') as mock_session:
             mock_session.return_value.__enter__.return_value = mock_db_session
-            mock_db_session.query.return_value.filter.return_value.first.return_value = sample_order
+
+            # Track calls to first() to return order first, then mandate
+            call_count = [0]
+            original_first = Mock()
+
+            def first_side_effect(*args, **kwargs):
+                call_count[0] += 1
+                if call_count[0] == 1:
+                    return sample_order  # First query returns order
+                else:
+                    return sample_mandate  # Subsequent queries return mandate
+
+            original_first.side_effect = first_side_effect
+
+            # Setup the query chain
+            mock_db_session.query.return_value.filter.return_value.first = original_first
 
             with patch('app.payment_agent.tools.create_payment_mandate') as mock_mandate:
                 mock_mandate.return_value = {"mandate_id": "mandate_123"}

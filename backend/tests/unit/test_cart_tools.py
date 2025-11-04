@@ -35,8 +35,8 @@ class TestAddToCart:
                 "description": "High-quality running shoes"
             }]
 
-            # Execute
-            result = add_to_cart(mock_tool_context, "prod_123", 2)
+            # Execute - use "first one" to match the first product in results
+            result = add_to_cart(mock_tool_context, "first one", 2)
 
             # Assert
             assert result["product_id"] == "prod_123"
@@ -60,8 +60,8 @@ class TestAddToCart:
                 "description": "Test description"
             }]
 
-            # Execute & Assert
-            with pytest.raises(ValueError, match="Product prod_999 not found"):
+            # Execute & Assert - the error occurs during product matching, not DB lookup
+            with pytest.raises(ValueError, match="Could not find product matching"):
                 add_to_cart(mock_tool_context, "prod_999", 1)
 
     def test_add_to_cart_zero_quantity(self, mock_db_session, mock_tool_context):
@@ -72,7 +72,7 @@ class TestAddToCart:
             "description": "Test description"
         }]
         with pytest.raises(ValueError, match="Quantity must be greater than 0"):
-            add_to_cart(mock_tool_context, "prod_123", 0)
+            add_to_cart(mock_tool_context, "first one", 0)
 
     def test_add_to_cart_negative_quantity(self, mock_db_session, mock_tool_context):
         """Test ValueError raised for negative quantity"""
@@ -82,7 +82,7 @@ class TestAddToCart:
             "description": "Test description"
         }]
         with pytest.raises(ValueError, match="Quantity must be greater than 0"):
-            add_to_cart(mock_tool_context, "prod_123", -1)
+            add_to_cart(mock_tool_context, "first one", -1)
 
     def test_add_to_cart_creates_uuid(self, mock_db_session, sample_product, mock_tool_context):
         """Test that cart_item_id is a UUID"""
@@ -97,8 +97,8 @@ class TestAddToCart:
                 "description": "High-quality running shoes"
             }]
 
-            # Execute
-            result = add_to_cart(mock_tool_context, "prod_123", 1)
+            # Execute - use "first one" to match the first product
+            result = add_to_cart(mock_tool_context, "first one", 1)
 
             # Assert UUID format
             assert "cart_item_id" in result
@@ -124,7 +124,8 @@ class TestAddToCart:
                 "description": "Test description"
             }]
 
-            result = add_to_cart(mock_tool_context, "prod_123", 1)
+            # Execute - use "first one" to match the first product
+            result = add_to_cart(mock_tool_context, "first one", 1)
 
             assert result["picture"] == "https://example.com/new.jpg"
 
