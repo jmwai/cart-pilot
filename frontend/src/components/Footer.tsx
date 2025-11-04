@@ -8,9 +8,10 @@ export default function Footer() {
 
           <div>
             <h3 className="font-bold text-gray-900 mb-4">Sole Search</h3>
-            <p className="text-gray-600 text-sm">This is not a real store. It is a demo for cloud run hackathon.</p>
+            <p className="text-gray-600 text-sm">This is not a real store. It is a demo for cloud run hackathon. Built with 
+              <Link href="https://google.github.io/adk-docs/" className="text-blue-500 hover:text-blue-600">Agent Development Kit</Link>
+            </p>
           </div>
-
         </div>
 
         <div className="mt-8 pt-8 border-t border-gray-200 text-center text-sm text-gray-600">
