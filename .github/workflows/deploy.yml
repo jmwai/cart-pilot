@@ -75,7 +75,7 @@ jobs:
         region: europe-west1
         project_id: ${{ secrets.PROJECT_ID }}
         timeout: 300s
-        flags: '--allow-unauthenticated --port=8080 --memory=512Mi --cpu=1 --max-instances=10 --min-instances=0'
+        flags: '--allow-unauthenticated --port=8080 --memory=512Mi --cpu=1 --max-instances=3 --min-instances=0'
         env_vars: |
           PROJECT_ID=${{ secrets.PROJECT_ID }}
           REGION=europe-west1
@@ -151,5 +151,5 @@ jobs:
         region: europe-west1
         project_id: ${{ secrets.PROJECT_ID }}
         timeout: 300s
-        flags: '--allow-unauthenticated --port=8080 --memory=512Mi --cpu=1 --max-instances=10 --min-instances=0'
+        flags: '--allow-unauthenticated --port=8080 --memory=512Mi --cpu=1 --max-instances=3 --min-instances=0'
 
