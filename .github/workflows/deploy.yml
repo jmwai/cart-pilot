@@ -80,11 +80,11 @@ jobs:
           PROJECT_ID=${{ secrets.PROJECT_ID }}
           REGION=europe-west1
         secrets: |
-          google-api-key:GOOGLE_API_KEY:latest
-          db-password:DB_PASSWORD:latest
-          db-host:DB_HOST:latest
-          db-name:DB_NAME:latest
-          db-user:DB_USER:latest
+          google-api-key=GOOGLE_API_KEY:latest
+          db-password=DB_PASSWORD:latest
+          db-host=DB_HOST:latest
+          db-name=DB_NAME:latest
+          db-user=DB_USER:latest
 
   deploy-frontend:
     name: Deploy Frontend Service
