@@ -2,7 +2,7 @@
 Database connection and session management using SQLAlchemy.
 """
 from __future__ import annotations
-
+import os
 import psycopg2
 from psycopg2.pool import SimpleConnectionPool
 from typing import Optional, Generator
