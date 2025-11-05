@@ -26,7 +26,7 @@ def fetch_google_api_key():
 
 
 def get_or_create_agent_engine(display_name: str) -> agent_engines.AgentEngine:
-    """Gets or creates a Vertex AI Agent Engine"""
+    """Gets or creates a Vertex AI Agent Engine."""
     existing_engines = agent_engines.AgentEngine.list(
         filter=f'display_name="{display_name}"'
     )
