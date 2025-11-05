@@ -38,6 +38,23 @@ class ShoppingAPI {
     }
   }
 
+  // Helper method to create FilePart from File
+  private async createFilePartFromFile(file: File): Promise<any> {
+    // Convert File to ArrayBuffer, then to base64
+    const arrayBuffer = await file.arrayBuffer();
+    const bytes = new Uint8Array(arrayBuffer);
+    const base64 = btoa(String.fromCharCode(...bytes));
+    
+    return {
+      kind: "file",
+      file: {
+        bytes: base64, // A2A spec: FileWithBytes uses base64-encoded bytes
+        mimeType: file.type,
+        name: file.name,
+      }
+    };
+  }
+
   // Send message to agent (non-streaming)
   async sendMessage(text: string): Promise<any> {
     await this.initialize();
@@ -59,15 +76,37 @@ class ShoppingAPI {
     return await this.client!.sendMessage(params);
   }
 
-  // Send message with streaming support
-  async *sendMessageStream(text: string): AsyncGenerator<any> {
+  // Send message with streaming support (supports text and/or image)
+  async *sendMessageStream(text?: string, imageFile?: File): AsyncGenerator<any> {
     await this.initialize();
+
+    const parts: any[] = [];
+    
+    // Add text part if provided
+    if (text && text.trim()) {
+      parts.push({ kind: 'text', text: text.trim() });
+    }
+    
+    // Add file part if image provided
+    if (imageFile) {
+      console.log('DEBUG: Creating FilePart for image:', imageFile.name, imageFile.type, imageFile.size);
+      const filePart = await this.createFilePartFromFile(imageFile);
+      console.log('DEBUG: Created FilePart:', filePart);
+      parts.push(filePart);
+    }
+
+    // Must have at least one part
+    if (parts.length === 0) {
+      throw new Error('Message must contain either text or image');
+    }
+
+    console.log('DEBUG: Sending message with parts:', parts.map(p => ({ kind: p.kind, hasFile: !!p.file })));
 
     const params: any = {
       message: {
         messageId: uuidv4(),
         role: 'user',
-        parts: [{ kind: 'text', text }],
+        parts: parts,
         kind: 'message',
         contextId: this.contextId || undefined, // Pass contextId to maintain session
       },
@@ -76,6 +115,13 @@ class ShoppingAPI {
         acceptedOutputModes: ['text/plain'],
       },
     };
+
+    console.log('DEBUG: Message params:', JSON.stringify({
+      messageId: params.message.messageId,
+      role: params.message.role,
+      partsCount: params.message.parts.length,
+      parts: params.message.parts.map(p => ({ kind: p.kind, hasFile: !!p.file }))
+    }));
 
     const stream = this.client!.sendMessageStream(params);
     

@@ -30,10 +30,17 @@ export interface A2AArtifact {
   parts: A2APart[];
 }
 
+export interface FileWithBytes {
+  bytes: string; // base64-encoded bytes
+  mimeType: string;
+  name?: string;
+}
+
 export interface A2APart {
   kind: "text" | "data" | "file";
   text?: string;
   data?: any;
+  file?: FileWithBytes; // Only support local file uploads (FileWithBytes)
 }
 
 export interface CartItem {
@@ -80,6 +87,7 @@ export interface ChatMessage {
   role: 'user' | 'assistant';
   content: string;
   timestamp: Date;
+  imageUrl?: string; // URL for displaying uploaded images
 }
 
 // UI State Types

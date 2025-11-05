@@ -5,6 +5,8 @@ This module implements the executor that bridges A2A protocol to ADK agents.
 It handles incoming A2A requests and executes them using the ADK shopping agent.
 """
 
+import logging
+
 from a2a.server.agent_execution import AgentExecutor, RequestContext
 from a2a.server.events import EventQueue
 from a2a.server.tasks import TaskUpdater
@@ -22,6 +24,8 @@ from google.adk.sessions import InMemorySessionService
 from google.genai import types
 
 from app.shopping_agent import root_agent as shopping_agent
+
+logger = logging.getLogger(__name__)
 
 
 class ShoppingAgentExecutor(AgentExecutor):
@@ -72,8 +76,245 @@ class ShoppingAgentExecutor(AgentExecutor):
         if not context.message:
             raise ValueError('Message should be present in request context')
 
-        # Get user input from context
-        query = context.get_user_input()
+        # Debug: Log message structure to understand how parts are accessed
+        # Use both logger and print to ensure we see output
+        print("=" * 80, flush=True)
+        print("DEBUG: ====== START EXECUTE ======", flush=True)
+        print(
+            f"DEBUG: context.message type: {type(context.message)}", flush=True)
+
+        # Try to serialize message to see its structure
+        import json
+        try:
+            if hasattr(context.message, '__dict__'):
+                msg_dict = context.message.__dict__
+                print(
+                    f"DEBUG: Message __dict__ keys: {list(msg_dict.keys())}", flush=True)
+            # Try to convert to dict if possible
+            if hasattr(context.message, 'model_dump'):
+                msg_json = json.dumps(
+                    context.message.model_dump(), default=str)
+                print(
+                    f"DEBUG: Message as JSON (first 500 chars): {msg_json[:500]}", flush=True)
+        except Exception as e:
+            print(f"DEBUG: Could not serialize message: {e}", flush=True)
+
+        logger.info("DEBUG: ====== START EXECUTE ======")
+        logger.info(f"DEBUG: context.message type: {type(context.message)}")
+
+        # Try multiple ways to access parts
+        message_parts = []
+        if hasattr(context.message, 'parts'):
+            message_parts = context.message.parts
+            print(
+                f"DEBUG: Found parts via context.message.parts: {len(message_parts) if message_parts else 0}", flush=True)
+            logger.info(
+                f"DEBUG: Found parts via context.message.parts: {len(message_parts) if message_parts else 0}")
+            # Log each part
+            for i, part in enumerate(message_parts):
+                part_info = f"DEBUG: Part {i}: {type(part)}, dir: {[a for a in dir(part) if not a.startswith('_')][:10]}"
+                print(part_info, flush=True)
+                logger.info(part_info)
+                # Try to serialize part
+                try:
+                    if hasattr(part, 'model_dump'):
+                        part_json = json.dumps(part.model_dump(), default=str)
+                        print(
+                            f"DEBUG: Part {i} JSON: {part_json[:200]}", flush=True)
+                except:
+                    pass
+        else:
+            print(
+                "DEBUG: context.message.parts not found, trying alternatives...", flush=True)
+            logger.info(
+                f"DEBUG: context.message.parts not found, trying alternatives...")
+            # Check if message has a different structure
+            if hasattr(context.message, 'message') and hasattr(context.message.message, 'parts'):
+                message_parts = context.message.message.parts
+                print(
+                    f"DEBUG: Found parts via context.message.message.parts: {len(message_parts)}", flush=True)
+                logger.info(
+                    f"DEBUG: Found parts via context.message.message.parts: {len(message_parts)}")
+            elif isinstance(context.message, dict) and 'parts' in context.message:
+                message_parts = context.message['parts']
+                print(
+                    f"DEBUG: Found parts via dict access: {len(message_parts)}", flush=True)
+                logger.info(
+                    f"DEBUG: Found parts via dict access: {len(message_parts)}")
+            else:
+                # Try to inspect the message object more deeply
+                print(
+                    f"DEBUG: Inspecting message object: {dir(context.message)}", flush=True)
+                if hasattr(context.message, '__dict__'):
+                    print(
+                        f"DEBUG: Message __dict__: {context.message.__dict__}", flush=True)
+                # Try get_user_input to see what's there
+                try:
+                    user_input = context.get_user_input()
+                    print(
+                        f"DEBUG: get_user_input() returned: {user_input[:200] if user_input else 'None'}", flush=True)
+                except Exception as e:
+                    print(f"DEBUG: get_user_input() failed: {e}", flush=True)
+
+        text_query = None
+        image_bytes = None
+        image_mime_type = None
+
+        print(
+            f"DEBUG: Processing message with {len(message_parts)} parts", flush=True)
+        logger.info(
+            f"DEBUG: Processing message with {len(message_parts)} parts")
+
+        # Process message parts to extract text and file parts
+        for i, part in enumerate(message_parts):
+            # Try multiple ways to access part attributes (Pydantic models)
+            part_kind = None
+            part_text = None
+            part_file = None
+
+            # Method 1: Direct attribute access
+            part_kind = getattr(part, 'kind', None)
+            part_text = getattr(part, 'text', None)
+            part_file = getattr(part, 'file', None)
+
+            # Method 2: Try JSON serialization (we know this works from earlier logs)
+            if part_kind is None or (part_text is None and part_file is None):
+                try:
+                    import json
+                    if hasattr(part, 'json'):
+                        part_json_str = part.json()
+                        part_dict = json.loads(part_json_str)
+                        print(
+                            f"DEBUG: Part {i} JSON: {part_json_str[:200]}...", flush=True)
+                    elif hasattr(part, 'dict'):
+                        part_dict = part.dict()
+                    elif hasattr(part, 'model_dump'):
+                        part_dict = part.model_dump()
+                    elif hasattr(part, '__dict__'):
+                        part_dict = part.__dict__
+                    else:
+                        part_dict = {}
+
+                    if part_kind is None:
+                        part_kind = part_dict.get('kind')
+                    if part_text is None:
+                        part_text = part_dict.get('text')
+                    if part_file is None:
+                        part_file = part_dict.get('file')
+                except Exception as e:
+                    print(
+                        f"DEBUG: Error accessing part as dict: {e}", flush=True)
+                    import traceback
+                    traceback.print_exc()
+
+            part_debug = f"DEBUG: Part {i}: kind={part_kind}, has_text={part_text is not None}, has_file={part_file is not None}"
+            print(part_debug, flush=True)
+            logger.info(part_debug)
+
+            # Handle text parts
+            if part_kind == 'text' and part_text:
+                text_query = part_text
+                text_debug = f"DEBUG: Extracted text query: {text_query[:50] if len(text_query) > 50 else text_query}..."
+                print(text_debug, flush=True)
+                logger.info(text_debug)
+            # Handle file parts (FilePart - only FileWithBytes supported for local uploads)
+            elif part_kind == 'file' and part_file:
+                file_obj = part_file
+
+                # Try to get file attributes
+                file_bytes = None
+                file_mime_type = None
+
+                # Method 1: Direct attribute access
+                file_bytes = getattr(file_obj, 'bytes', None)
+                file_mime_type = getattr(file_obj, 'mimeType', None) or getattr(
+                    file_obj, 'mime_type', None)
+
+                # Method 2: Try dict access
+                if file_bytes is None:
+                    try:
+                        import json
+                        if hasattr(file_obj, 'json'):
+                            file_json_str = file_obj.json()
+                            file_dict = json.loads(file_json_str)
+                        elif hasattr(file_obj, 'dict'):
+                            file_dict = file_obj.dict()
+                        elif hasattr(file_obj, 'model_dump'):
+                            file_dict = file_obj.model_dump()
+                        elif hasattr(file_obj, '__dict__'):
+                            file_dict = file_obj.__dict__
+                        elif isinstance(file_obj, dict):
+                            file_dict = file_obj
+                        else:
+                            file_dict = {}
+
+                        file_bytes = file_dict.get('bytes')
+                        file_mime_type = file_dict.get(
+                            'mimeType') or file_dict.get('mime_type')
+                        print(
+                            f"DEBUG: File dict access - bytes present: {file_bytes is not None}, mime_type: {file_mime_type}", flush=True)
+                    except Exception as e:
+                        print(
+                            f"DEBUG: Error accessing file as dict: {e}", flush=True)
+                        import traceback
+                        traceback.print_exc()
+
+                file_debug = f"DEBUG: Found file part, has bytes={file_bytes is not None}, has uri={hasattr(file_obj, 'uri') or (isinstance(file_obj, dict) and 'uri' in file_obj)}"
+                print(file_debug, flush=True)
+                logger.info(file_debug)
+
+                # Handle FileWithBytes (base64-encoded) - only local uploads supported
+                if file_bytes:
+                    import base64
+                    try:
+                        decode_debug = f"DEBUG: Decoding base64 image (base64 length: {len(file_bytes)})"
+                        print(decode_debug, flush=True)
+                        logger.info(decode_debug)
+
+                        image_bytes = base64.b64decode(file_bytes)
+                        image_mime_type = file_mime_type or 'image/jpeg'
+
+                        decoded_debug = f"DEBUG: Decoded image - size: {len(image_bytes)} bytes, mime_type: {image_mime_type}"
+                        print(decoded_debug, flush=True)
+                        logger.info(decoded_debug)
+
+                        # Validate MIME type
+                        valid_types = ['image/jpeg', 'image/png', 'image/webp']
+                        if image_mime_type not in valid_types:
+                            raise ValueError(
+                                f'Unsupported image type: {image_mime_type}. Supported types: {valid_types}')
+
+                        # Validate size (max 10MB)
+                        max_size = 10 * 1024 * 1024  # 10MB
+                        if len(image_bytes) > max_size:
+                            raise ValueError(
+                                f'Image size ({len(image_bytes)} bytes) exceeds maximum ({max_size} bytes)')
+                        print("DEBUG: Image validation passed", flush=True)
+                        logger.info(f"DEBUG: Image validation passed")
+                    except Exception as e:
+                        error_debug = f"DEBUG: Error processing image: {e}"
+                        print(error_debug, flush=True)
+                        logger.error(error_debug)
+                        import traceback
+                        traceback.print_exc()
+                        raise ValueError(f'Failed to process image file: {e}')
+                elif hasattr(file_obj, 'uri') or (isinstance(file_obj, dict) and 'uri' in file_obj):
+                    # FileWithUri not supported - only local file uploads
+                    error_msg = 'Only local file uploads (FileWithBytes) are supported. FileWithUri is not supported.'
+                    print(f"DEBUG: {error_msg}", flush=True)
+                    raise ValueError(error_msg)
+                else:
+                    error_msg = f'File part found but no bytes or uri attribute. File object type: {type(file_obj)}, file_obj: {str(file_obj)[:200]}'
+                    print(f"DEBUG: {error_msg}", flush=True)
+                    logger.error(error_msg)
+
+        # Get text query from context if not found in parts
+        if not text_query:
+            text_query = context.get_user_input() or ""
+
+        extraction_complete = f"DEBUG: Extraction complete - text_query={'present' if text_query else 'None'}, image_bytes={'present' if image_bytes else 'None'}"
+        print(extraction_complete, flush=True)
+        logger.info(extraction_complete)
 
         # Create or use existing task
         task = context.current_task or new_task(context.message)
@@ -102,6 +343,7 @@ class ShoppingAgentExecutor(AgentExecutor):
 
             # Always try to get existing session first to preserve state
             session = None
+            initial_state = {}
             try:
                 session = await self.runner.session_service.get_session(
                     app_name=self.agent.name,
@@ -110,42 +352,205 @@ class ShoppingAgentExecutor(AgentExecutor):
                 )
                 # Log existing state for debugging
                 if session and hasattr(session, 'state'):
-                    state_keys = list(session.state.keys()
-                                      ) if session.state else []
-                    print(
+                    initial_state = session.state if session.state else {}
+                    state_keys = list(initial_state.keys())
+                    logger.info(
                         f"DEBUG: Retrieved existing session {session_id} with state keys: {state_keys}")
             except Exception as e:
                 # Session doesn't exist or error occurred
-                print(
+                logger.info(
                     f"DEBUG: Session {session_id} get_session raised exception: {e}")
 
             # If session is None (either get_session returned None or raised exception), create new one
             if session is None:
-                print(
+                logger.info(
                     f"DEBUG: Session {session_id} not found, creating new one (app_name={self.agent.name}, user_id={user_id})")
+                # Prepare initial state with image if available
+                initial_state = {}
+                if image_bytes:
+                    initial_state["current_image_bytes"] = image_bytes
+                    initial_state["current_image_mime_type"] = image_mime_type
                 try:
                     session = await self.runner.session_service.create_session(
                         app_name=self.agent.name,
                         user_id=user_id,
-                        state={},
+                        state=initial_state,
                         session_id=session_id,
                     )
-                    print(f"DEBUG: Successfully created session {session_id}")
+                    logger.info(
+                        f"DEBUG: Successfully created session {session_id} with initial state keys: {list(initial_state.keys())}")
                 except Exception as create_error:
-                    print(
+                    logger.error(
                         f"DEBUG: Failed to create session {session_id}: {create_error}")
                     raise ValueError(
                         f"Failed to create session with id: {session_id} (app_name={self.agent.name}, user_id={user_id}): {create_error}")
+            else:
+                # Session exists - update state with image if available
+                if image_bytes:
+                    # Ensure session has state dictionary
+                    if not hasattr(session, 'state') or session.state is None:
+                        session.state = {}
+
+                    # Store image bytes in state
+                    session.state["current_image_bytes"] = image_bytes
+                    session.state["current_image_mime_type"] = image_mime_type
+
+                    logger.info(
+                        f"DEBUG: Updated existing session {session_id} with image (size: {len(image_bytes)} bytes)")
+                    logger.info(
+                        f"DEBUG: Session state keys after update: {list(session.state.keys())}")
+
+                    # Explicitly update session to ensure persistence
+                    try:
+                        if hasattr(self.runner.session_service, 'update_session'):
+                            await self.runner.session_service.update_session(session)
+                            logger.info(
+                                f"DEBUG: Called update_session to persist state")
+                    except Exception as update_error:
+                        logger.warning(
+                            f"DEBUG: update_session not available or failed: {update_error}")
+
+                    # For InMemorySessionService, modifying session.state should persist
+                    # but let's verify by re-fetching
+                    try:
+                        verify_session = await self.runner.session_service.get_session(
+                            app_name=self.agent.name,
+                            user_id=user_id,
+                            session_id=session_id
+                        )
+                        if verify_session and hasattr(verify_session, 'state'):
+                            verify_keys = list(
+                                verify_session.state.keys()) if verify_session.state else []
+                            verify_image = verify_session.state.get(
+                                "current_image_bytes") is not None
+                            logger.info(
+                                f"DEBUG: Verified session state - keys: {verify_keys}, image present: {verify_image}")
+                    except Exception as verify_error:
+                        logger.error(
+                            f"DEBUG: Could not verify session state: {verify_error}")
 
             # Verify session was created/retrieved
             if not session:
                 raise ValueError(
                     f"Failed to create or retrieve session with id: {session_id} (app_name={self.agent.name}, user_id={user_id})")
 
-            # Create ADK content message
-            content = types.Content(
-                role='user', parts=[types.Part.from_text(text=query)]
-            )
+            # Create ADK content message with multimodal parts
+            parts = []
+
+            # Add text part if exists
+            if text_query:
+                parts.append(types.Part.from_text(text=text_query))
+
+            # Add image part if exists - pass directly in Content, not state
+            if image_bytes:
+                # ADK supports inline_data for images
+                # Try different methods to create image part
+                try:
+                    # Method 1: Try from_inline_data if it exists
+                    if hasattr(types.Part, 'from_inline_data'):
+                        parts.append(types.Part.from_inline_data(
+                            data=image_bytes,
+                            mime_type=image_mime_type
+                        ))
+                        print(
+                            f"DEBUG: Added image to Content using from_inline_data, size: {len(image_bytes)} bytes", flush=True)
+                        logger.info(
+                            f"DEBUG: Added image to Content using from_inline_data")
+                    # Method 2: Try creating Part with inline_data parameter
+                    elif hasattr(types.Part, '__init__'):
+                        # Try to inspect Part constructor
+                        import inspect
+                        sig = inspect.signature(types.Part.__init__)
+                        params = list(sig.parameters.keys())
+                        print(
+                            f"DEBUG: Part.__init__ parameters: {params}", flush=True)
+
+                        # Try common parameter names
+                        if 'inline_data' in params:
+                            parts.append(types.Part(
+                                inline_data={'data': image_bytes, 'mime_type': image_mime_type}))
+                        elif 'data' in params and 'mime_type' in params:
+                            parts.append(types.Part(
+                                data=image_bytes, mime_type=image_mime_type))
+                        else:
+                            # Fallback: Just store in state, don't add to Content
+                            print(
+                                f"DEBUG: Cannot create image Part - parameters: {params}. Storing in state only.", flush=True)
+                            logger.warning(
+                                f"DEBUG: Cannot create image Part - storing in state only")
+                    else:
+                        # Fallback: Just store in state
+                        print(
+                            f"DEBUG: Cannot create image Part - Part class doesn't support inline_data. Storing in state only.", flush=True)
+                        logger.warning(
+                            f"DEBUG: Cannot create image Part - storing in state only")
+                except Exception as e:
+                    print(
+                        f"WARNING: Failed to create image part: {e}", flush=True)
+                    logger.warning(f"Failed to create image part: {e}")
+                    import traceback
+                    traceback.print_exc()
+                    # Don't raise - just store in state and continue
+                    print(
+                        f"DEBUG: Continuing without image in Content - image will be read from state", flush=True)
+
+            # Ensure at least one part exists
+            if not parts:
+                parts.append(types.Part.from_text(text=""))
+
+            content = types.Content(role='user', parts=parts)
+            print(
+                f"DEBUG: Created Content with {len(parts)} parts (text: {bool(text_query)}, image: {bool(image_bytes)})", flush=True)
+
+            # Store image in state BEFORE Runner starts - this is critical!
+            # The tool will read from state, so we must ensure it's persisted
+            if image_bytes:
+                # Ensure session has state dictionary
+                if not hasattr(session, 'state') or session.state is None:
+                    session.state = {}
+
+                # Store image bytes in state
+                session.state["current_image_bytes"] = image_bytes
+                session.state["current_image_mime_type"] = image_mime_type
+                print(
+                    f"DEBUG: Stored image in state BEFORE Runner (size: {len(image_bytes)} bytes)", flush=True)
+
+                # CRITICAL: Explicitly update session to ensure state persistence
+                # For InMemorySessionService, modifying session.state should persist, but let's be explicit
+                try:
+                    if hasattr(self.runner.session_service, 'update_session'):
+                        await self.runner.session_service.update_session(session)
+                        print(
+                            f"DEBUG: Called update_session to persist image", flush=True)
+
+                    # Verify persistence by re-fetching
+                    verify_session = await self.runner.session_service.get_session(
+                        app_name=self.agent.name,
+                        user_id=user_id,
+                        session_id=session_id
+                    )
+                    if verify_session and hasattr(verify_session, 'state'):
+                        verify_keys = list(
+                            verify_session.state.keys()) if verify_session.state else []
+                        verify_image = verify_session.state.get(
+                            "current_image_bytes") is not None
+                        print(
+                            f"DEBUG: VERIFIED state persistence - keys: {verify_keys}, image present: {verify_image}", flush=True)
+
+                        if not verify_image:
+                            print(
+                                f"DEBUG: ERROR - Image not persisted! Re-storing...", flush=True)
+                            verify_session.state["current_image_bytes"] = image_bytes
+                            verify_session.state["current_image_mime_type"] = image_mime_type
+                            if hasattr(self.runner.session_service, 'update_session'):
+                                await self.runner.session_service.update_session(verify_session)
+                            print(
+                                f"DEBUG: Re-stored image in state after verification", flush=True)
+                except Exception as verify_error:
+                    print(
+                        f"DEBUG: ERROR during state verification: {verify_error}", flush=True)
+                    import traceback
+                    traceback.print_exc()
 
             # Track accumulated text and artifacts
             accumulated_text = ''

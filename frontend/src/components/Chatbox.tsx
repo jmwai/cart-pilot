@@ -29,8 +29,12 @@ export default function Chatbox() {
   const [loadingMessage, setLoadingMessage] = useState<string>('');
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   // Ref to track the current assistant message index for streaming updates
   const assistantMessageIndexRef = useRef<number>(-1);
+  
+  // Image upload state
+  const [selectedImage, setSelectedImage] = useState<File | null>(null);
   
   // Check if we're on mobile/tablet
   const [isMobile, setIsMobile] = useState(false);
@@ -86,7 +90,8 @@ export default function Chatbox() {
     content: string, 
     products?: Product[], 
     cart?: CartItem[],
-    order?: Order
+    order?: Order,
+    imageUrl?: string
   ) => {
     setMessages(prev => [...prev, {
       id: uuidv4(),
@@ -95,7 +100,8 @@ export default function Chatbox() {
       timestamp: new Date(),
       products,
       cart,
-      order
+      order,
+      imageUrl
     }]);
   };
 
@@ -136,12 +142,28 @@ export default function Chatbox() {
   const handleSend = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    if (!input.trim() || isLoading || !isInitialized) return;
+    // Allow sending if there's text OR an image selected
+    if ((!input.trim() && !selectedImage) || isLoading || !isInitialized) return;
 
     const userMessage = input.trim();
+    const imageToSend = selectedImage;
+    
+    // Clear inputs
     setInput('');
-    addMessage('user', userMessage);
-    setLoadingMessage(getContextualLoadingMessage(userMessage));
+    setSelectedImage(null);
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
+    
+    // Create image URL for display (only after sending, per requirement)
+    let imageUrl: string | undefined = undefined;
+    if (imageToSend) {
+      imageUrl = URL.createObjectURL(imageToSend);
+    }
+    
+    // Add user message with image if present
+    addMessage('user', userMessage || (imageToSend ? 'Image search' : ''), undefined, undefined, undefined, imageUrl);
+    setLoadingMessage(imageToSend ? 'Searching for similar products...' : getContextualLoadingMessage(userMessage));
     setIsLoading(true);
     
     // Reset assistant message index for new request
@@ -199,8 +221,8 @@ export default function Chatbox() {
     };
 
     try {
-      // Use streaming method
-      for await (const event of shoppingAPI.sendMessageStream(userMessage)) {
+      // Use streaming method - pass text and/or image
+      for await (const event of shoppingAPI.sendMessageStream(userMessage || undefined, imageToSend || undefined)) {
         const parsedEvent = parseStreamingEvent(event);
         
         if (!parsedEvent) continue;
@@ -437,6 +459,32 @@ export default function Chatbox() {
   const handleRemoveFromCart = (cartItemId: string) => {
     // Send message to remove item
     setInput(`Remove cart item ${cartItemId}`);
+  };
+
+  const handleImageSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    // Validate file type
+    const validTypes = ['image/jpeg', 'image/png', 'image/webp'];
+    if (!validTypes.includes(file.type)) {
+      alert('Please select a valid image file (JPEG, PNG, or WebP)');
+      e.target.value = ''; // Reset input
+      return;
+    }
+
+    // Validate file size (max 10MB)
+    const maxSize = 10 * 1024 * 1024; // 10MB in bytes
+    if (file.size > maxSize) {
+      alert('Image size must be less than 10MB');
+      e.target.value = ''; // Reset input
+      return;
+    }
+
+    // Store selected image
+    setSelectedImage(file);
+    // Clear text input when image is selected (separate queries)
+    setInput('');
   };
 
   const handlePlaceOrder = () => {
@@ -1109,6 +1157,16 @@ export default function Chatbox() {
                       : 'bg-white text-gray-800 border border-gray-200'
                   }`}
                 >
+                  {/* Display image if present */}
+                  {msg.imageUrl && (
+                    <div className="mb-2">
+                      <img 
+                        src={msg.imageUrl} 
+                        alt="Uploaded" 
+                        className="max-w-full h-auto rounded-lg max-h-64 object-contain"
+                      />
+                    </div>
+                  )}
                   <p className="text-sm whitespace-pre-wrap">
                     {typeof msg.content === 'string' ? msg.content : String(msg.content || '')}
                   </p>
@@ -1209,18 +1267,41 @@ export default function Chatbox() {
           {/* Input Form */}
           <form onSubmit={handleSend} className="p-4 border-t border-gray-200 bg-white flex-shrink-0">
             <div className="flex gap-2">
+              {/* Hidden file input */}
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/jpeg,image/png,image/webp"
+                onChange={handleImageSelect}
+                className="hidden"
+              />
+              
+              {/* Camera icon button */}
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                disabled={isLoading || !isInitialized}
+                className="px-3 py-3 text-gray-500 hover:text-gray-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center justify-center"
+                aria-label="Upload image"
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
+                </svg>
+              </button>
+              
               <input
                 ref={inputRef}
                 type="text"
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
-                placeholder="Type your message..."
+                placeholder={selectedImage ? "Add optional text..." : "Type your message..."}
                 className="flex-1 px-4 py-3 text-base border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                 disabled={isLoading || !isInitialized}
               />
               <button
                 type="submit"
-                disabled={isLoading || !input.trim() || !isInitialized}
+                disabled={isLoading || (!input.trim() && !selectedImage) || !isInitialized}
                 className="px-5 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
               >
                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1228,6 +1309,12 @@ export default function Chatbox() {
                 </svg>
               </button>
             </div>
+            {/* Show selected image preview */}
+            {selectedImage && (
+              <div className="mt-2 text-sm text-gray-600">
+                Selected: {selectedImage.name} ({(selectedImage.size / 1024 / 1024).toFixed(2)} MB)
+              </div>
+            )}
           </form>
         </div>
       )}
