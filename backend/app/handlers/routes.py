@@ -3,7 +3,7 @@
 import logging
 from starlette.responses import JSONResponse, RedirectResponse
 
-from app.a2a_agent_card import create_shopping_agent_card
+from app.agent_card import create_shopping_agent_card
 from app.common.db import health_check
 
 

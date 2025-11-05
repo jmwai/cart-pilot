@@ -20,8 +20,8 @@ import vertexai
 from a2a.server.apps import A2AStarletteApplication
 from a2a.server.request_handlers import DefaultRequestHandler
 from a2a.server.tasks import InMemoryTaskStore
-from app.a2a_agent_card import create_shopping_agent_card
-from app.a2a_executor import ShoppingAgentExecutor
+from app.agent_card import create_shopping_agent_card
+from app.agent_executor import ShoppingAgentExecutor
 
 # Starlette imports
 from starlette.middleware.cors import CORSMiddleware as StarletteCORSMiddleware
