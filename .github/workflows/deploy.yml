@@ -125,6 +125,13 @@ jobs:
           --project ${{ secrets.PROJECT_ID }} \
           --format 'value(status.url)' \
           --quiet || echo "")
+        
+        if [ -z "$BACKEND_URL" ]; then
+          echo "ERROR: Backend service 'cart-pilot-backend' not found or not accessible"
+          echo "Please ensure the backend service is deployed before building the frontend"
+          exit 1
+        fi
+        
         echo "BACKEND_URL=$BACKEND_URL" >> $GITHUB_ENV
         echo "BACKEND_URL=$BACKEND_URL"
     
@@ -154,5 +161,10 @@ jobs:
         region: europe-west1
         project_id: ${{ secrets.PROJECT_ID }}
         timeout: 300s
+        env_vars_update_strategy: overwrite
+        env_vars: |
+          NEXT_PUBLIC_AGENT_CARD_URL=${{ env.BACKEND_URL }}/.well-known/agent-card.json
+          NEXT_PUBLIC_API_BASE_URL=${{ env.BACKEND_URL }}
+          NEXT_PUBLIC_DEFAULT_USER_ID=user_guest
         flags: '--allow-unauthenticated --port=8080 --memory=512Mi --cpu=1 --max-instances=3 --min-instances=0'
 
