@@ -30,7 +30,7 @@ from starlette.routing import Route
 # Local imports
 from app.common.config import get_settings
 from app.handlers.routes import root, healthz, agent_card_endpoint
-from app.handlers.products import get_products, get_product_by_id
+from app.handlers.products import get_products, get_product_by_id, get_similar_products_by_image
 from app.middleware.logging import LoggingMiddleware
 
 
@@ -113,6 +113,9 @@ a2a_app.routes.append(Route("/api/products", get_products, methods=["GET"]))
 # Use path parameter syntax for product ID
 a2a_app.routes.append(
     Route("/api/products/{id}", get_product_by_id, methods=["GET"]))
+# Similar products based on image similarity
+a2a_app.routes.append(
+    Route("/api/products/{id}/similar", get_similar_products_by_image, methods=["GET"]))
 
 # Use the built Starlette app
 app = a2a_app

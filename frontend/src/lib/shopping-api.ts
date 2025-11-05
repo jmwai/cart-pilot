@@ -120,7 +120,7 @@ class ShoppingAPI {
       messageId: params.message.messageId,
       role: params.message.role,
       partsCount: params.message.parts.length,
-      parts: params.message.parts.map(p => ({ kind: p.kind, hasFile: !!p.file }))
+      parts: params.message.parts.map((p: any) => ({ kind: p.kind, hasFile: !!p.file }))
     }));
 
     const stream = this.client!.sendMessageStream(params);
@@ -194,6 +194,23 @@ class ShoppingAPI {
     } catch (error) {
       console.error(`Error fetching product ${id}:`, error);
       throw error;
+    }
+  }
+
+  async getSimilarProducts(productId: string, limit: number = 6): Promise<Product[]> {
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/products/${productId}/similar?limit=${limit}`);
+      if (!response.ok) {
+        // If API fails, return empty array (will fall back to random products)
+        console.warn(`Failed to fetch similar products for ${productId}: ${response.statusText}`);
+        return [];
+      }
+      const data = await response.json();
+      return data.products || [];
+    } catch (error) {
+      console.error(`Error fetching similar products for ${productId}:`, error);
+      // Return empty array on error (will fall back to random products)
+      return [];
     }
   }
 }

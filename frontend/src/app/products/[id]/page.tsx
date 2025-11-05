@@ -24,6 +24,14 @@ async function getProduct(id: string): Promise<Product | null> {
 
 async function getRelatedProducts(excludeId: string, limit: number = 4): Promise<Product[]> {
   try {
+    // First, try to get image-based similar products
+    const similarProducts = await shoppingAPI.getSimilarProducts(excludeId, limit);
+    
+    if (similarProducts.length > 0) {
+      return similarProducts.slice(0, limit);
+    }
+    
+    // Fallback: If no similar products found, use random products
     const allProducts = await shoppingAPI.getProducts();
     // Filter out the current product and get random selection
     const filtered = allProducts.filter(p => p.id !== excludeId);
@@ -32,7 +40,16 @@ async function getRelatedProducts(excludeId: string, limit: number = 4): Promise
     return shuffled.slice(0, limit);
   } catch (error) {
     console.error('Failed to fetch related products', error);
-    return [];
+    // Fallback to random products on error
+    try {
+      const allProducts = await shoppingAPI.getProducts();
+      const filtered = allProducts.filter(p => p.id !== excludeId);
+      const shuffled = filtered.sort(() => Math.random() - 0.5);
+      return shuffled.slice(0, limit);
+    } catch (fallbackError) {
+      console.error('Failed to fetch fallback products', fallbackError);
+      return [];
+    }
   }
 }
 
