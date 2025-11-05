@@ -19,7 +19,7 @@ class Settings(BaseSettings):
     API_TOP_K_MAX: int = Field(50)
     MAX_UPLOAD_MB: int = Field(10)
 
-    GEMINI_MODEL: str = Field("gemini-2.5-pro",
+    GEMINI_MODEL: str = Field("gemini-2.5-flash",
                               description="Gemini model to use for agents")
 
     model_config = SettingsConfigDict(

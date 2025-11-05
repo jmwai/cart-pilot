@@ -442,6 +442,11 @@ body {
   [style*="maxWidth"][style*="--chatbox-width"] {
     max-width: 100% !important;
   }
+  
+  /* Ensure sections use full width on mobile */
+  section[class*="max-w"] {
+    max-width: 100% !important;
+  }
 }
 
 .chatbox-panel {

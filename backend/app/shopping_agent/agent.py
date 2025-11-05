@@ -1,5 +1,8 @@
 from __future__ import annotations
 from google.adk.agents import LlmAgent
+from google.genai import types
+from google.adk.planners import BuiltInPlanner
+
 
 # Import sub-agents from sub_agents directory
 from .sub_agents.cart_agent import root_agent as cart_agent
@@ -160,6 +163,12 @@ Always be helpful, conversational, and guide users smoothly through their shoppi
     """,
     description="Orchestrates shopping workflow by coordinating sub-agents",
     model=settings.GEMINI_MODEL,
+    planner=BuiltInPlanner(
+        thinking_config=types.ThinkingConfig(
+            include_thoughts=True,
+            thinking_budget=0,
+        )
+    ),
     sub_agents=[
         cart_agent,
         checkout_agent,

@@ -51,8 +51,8 @@ export default async function ProductPage({ params }: ProductPageProps) {
       
       <main className="flex-1 main-content">
         {/* Product Detail Section */}
-        <section className="mx-auto px-4 sm:px-6 lg:px-8 py-16" style={{ maxWidth: 'calc(100% - var(--chatbox-width) - 2rem)' }}>
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-16">
+        <section className="mx-auto px-4 sm:px-6 lg:px-8 py-8 sm:py-16 w-full max-w-full lg:max-w-[calc(100%-var(--chatbox-width)-2rem)]">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 lg:gap-16">
             {/* Product Image */}
             <div>
               <div className="aspect-square bg-white border border-gray-200 rounded-lg relative overflow-hidden">
@@ -93,10 +93,10 @@ export default async function ProductPage({ params }: ProductPageProps) {
 
         {/* You Might Also Like */}
         {relatedProducts.length > 0 && (
-          <section className="border-t border-gray-200 py-16">
-            <div className="mx-auto px-4 sm:px-6 lg:px-8" style={{ maxWidth: 'calc(100% - var(--chatbox-width) - 2rem)' }}>
-              <h2 className="text-sm font-medium text-gray-900 mb-8">You Might Also Like</h2>
-              <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-6 gap-4">
+          <section className="border-t border-gray-200 py-8 sm:py-16">
+            <div className="mx-auto px-4 sm:px-6 lg:px-8 w-full max-w-full lg:max-w-[calc(100%-var(--chatbox-width)-2rem)]">
+              <h2 className="text-sm font-medium text-gray-900 mb-6 sm:mb-8">You Might Also Like</h2>
+              <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-6 gap-3 sm:gap-4">
                 {relatedProducts.map((relatedProduct) => (
                   <Link
                     key={relatedProduct.id}

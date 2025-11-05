@@ -20,6 +20,9 @@ export default function ProductImage({ src, alt }: ProductImageProps) {
     );
   }
 
+  // Handle external URLs and local images
+  const isExternalUrl = src.startsWith('http://') || src.startsWith('https://');
+  
   return (
     <Image
       src={src}
@@ -27,8 +30,9 @@ export default function ProductImage({ src, alt }: ProductImageProps) {
       fill
       className="object-contain"
       onError={() => setImageError(true)}
-      sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
-      unoptimized
+      sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 33vw"
+      unoptimized={isExternalUrl}
+      priority={false}
     />
   );
 }

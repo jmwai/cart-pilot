@@ -24,11 +24,11 @@ export default async function Home() {
       
       <main className="flex-1 main-content">
         {/* Products Grid */}
-        <section className="mx-auto px-4 sm:px-6 lg:px-8 py-12" style={{ maxWidth: 'calc(100% - var(--chatbox-width) - 2rem)' }}>
+        <section className="mx-auto px-4 sm:px-6 lg:px-8 py-12 w-full max-w-full lg:max-w-[calc(100%-var(--chatbox-width)-2rem)]">
           {/* Landing Page Message */}
           <div className="mb-8 text-center">
-            <p className="text-lg text-gray-700">
-             <b> I have thousands of shoes like this. Use the Shopping Assistant to find and buy any type of shoes</b>
+            <p className="text-base sm:text-lg text-gray-700 px-4">
+             <b>I have thousands of shoes like this. Use the Shopping Assistant to find and buy any type of shoes</b>
             </p>
           </div>
           
@@ -37,15 +37,15 @@ export default async function Home() {
               <p className="text-gray-600">No products available at the moment.</p>
             </div>
           ) : (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
               {products.map((product) => (
               <Link
                 key={product.id}
                 href={`/products/${product.id}`}
-                className="group"
+                className="group block"
               >
                 {/* Product Image */}
-                <div className="aspect-square bg-white border border-gray-200 rounded-lg relative overflow-hidden mb-3">
+                <div className="aspect-square bg-white border border-gray-200 rounded-lg relative overflow-hidden mb-3 w-full">
                   <ProductImage
                     src={product.product_image_url || product.picture}
                     alt={product.name}
@@ -53,8 +53,8 @@ export default async function Home() {
                 </div>
 
                 {/* Product Info */}
-                <div>
-                  <h3 className="text-sm font-medium text-gray-900 mb-1">
+                <div className="text-left">
+                  <h3 className="text-sm font-medium text-gray-900 mb-1 line-clamp-2">
                     {product.name}
                   </h3>
                   {product.price !== null && product.price !== undefined && (

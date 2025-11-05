@@ -79,7 +79,12 @@ jobs:
         env_vars: |
           PROJECT_ID=${{ secrets.PROJECT_ID }}
           REGION=europe-west1
-          GOOGLE_API_KEY=${{ secrets.GOOGLE_API_KEY }}
+        secrets: |
+          google-api-key:GOOGLE_API_KEY
+          db-password:DB_PASSWORD
+          db-host:DB_HOST
+          db-name:DB_NAME
+          db-user:DB_USER
 
   deploy-frontend:
     name: Deploy Frontend Service
