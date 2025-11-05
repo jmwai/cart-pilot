@@ -18,11 +18,11 @@ from .models import Base
 settings = get_settings()
 
 
-
 _pool: Optional[SimpleConnectionPool] = None
 
 
-IS_PRODUCTION = os.getenv('K_SERVICE') is not None
+IS_PRODUCTION = os.getenv('CLOUD_RUN') is not None
+
 
 def get_conn() -> SimpleConnectionPool:
     """Creates a new connection pool for either local or prod."""
@@ -45,12 +45,12 @@ def get_conn() -> SimpleConnectionPool:
                 minconn=1,
                 maxconn=10,
                 host=settings.DB_HOST,
-                port=5432, 
+                port=5432,
                 dbname=settings.DB_NAME,
                 user=settings.DB_USER,
                 password=settings.DB_PASSWORD
             )
-            
+
     except Exception as e:
         raise e
 
