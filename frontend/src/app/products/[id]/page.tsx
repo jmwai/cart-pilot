@@ -22,7 +22,7 @@ async function getProduct(id: string): Promise<Product | null> {
   }
 }
 
-async function getRelatedProducts(excludeId: string, limit: number = 4): Promise<Product[]> {
+async function getRelatedProducts(excludeId: string, limit: number = 7): Promise<Product[]> {
   try {
     // First, try to get image-based similar products
     const similarProducts = await shoppingAPI.getSimilarProducts(excludeId, limit);
@@ -56,7 +56,7 @@ async function getRelatedProducts(excludeId: string, limit: number = 4): Promise
 export default async function ProductPage({ params }: ProductPageProps) {
   const { id } = await params;
   const product = await getProduct(id);
-  const relatedProducts = await getRelatedProducts(id, 4);
+  const relatedProducts = await getRelatedProducts(id, 7);
 
   if (!product) {
     notFound();

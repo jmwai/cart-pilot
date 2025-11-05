@@ -178,9 +178,12 @@ class TestImageVectorSearch:
             with patch('app.shopping_agent.sub_agents.product_discovery_agent.tools._embed_image_1408_from_bytes') as mock_embed:
                 mock_embed.return_value = [0.1] * 1408
 
-                # Execute
+                # Set image bytes in tool context state
                 image_bytes = b"fake_image_data"
-                result = image_vector_search(mock_tool_context, image_bytes)
+                mock_tool_context.state["current_image_bytes"] = image_bytes
+
+                # Execute (function now only takes tool_context)
+                result = image_vector_search(mock_tool_context)
 
                 # Assert
                 assert len(result) == 1
@@ -200,10 +203,13 @@ class TestImageVectorSearch:
             with patch('app.shopping_agent.sub_agents.product_discovery_agent.tools._embed_image_1408_from_bytes') as mock_embed:
                 mock_embed.return_value = [0.1] * 1408
 
-                # Execute with empty bytes
-                result = image_vector_search(mock_tool_context, b"")
+                # Set empty bytes in tool context state - should raise ValueError
+                mock_tool_context.state["current_image_bytes"] = b""
 
-                assert isinstance(result, list)
+                # Execute (function now only takes tool_context)
+                # Empty bytes are treated as missing, so should raise ValueError
+                with pytest.raises(ValueError, match="No image found"):
+                    image_vector_search(mock_tool_context)
 
     def test_image_vector_search_no_results(self, mock_db_session, mock_tool_context):
         """Test empty results when no matches"""
@@ -217,7 +223,11 @@ class TestImageVectorSearch:
             with patch('app.shopping_agent.sub_agents.product_discovery_agent.tools._embed_image_1408_from_bytes') as mock_embed:
                 mock_embed.return_value = [0.1] * 1408
 
-                result = image_vector_search(mock_tool_context, b"fake_image")
+                # Set image bytes in tool context state
+                mock_tool_context.state["current_image_bytes"] = b"fake_image"
+
+                # Execute (function now only takes tool_context)
+                result = image_vector_search(mock_tool_context)
 
                 assert result == []
 
@@ -248,7 +258,11 @@ class TestImageVectorSearch:
             with patch('app.shopping_agent.sub_agents.product_discovery_agent.tools._embed_image_1408_from_bytes') as mock_embed:
                 mock_embed.return_value = [0.1] * 1408
 
-                result = image_vector_search(mock_tool_context, b"fake_image")
+                # Set image bytes in tool context state
+                mock_tool_context.state["current_image_bytes"] = b"fake_image"
+
+                # Execute (function now only takes tool_context)
+                result = image_vector_search(mock_tool_context)
 
                 # LIMIT 10 in SQL, but mock returns all
                 assert len(result) <= 12
@@ -265,10 +279,14 @@ class TestImageVectorSearch:
             with patch('app.shopping_agent.sub_agents.product_discovery_agent.tools._embed_image_1408_from_bytes') as mock_embed:
                 mock_embed.return_value = [0.1] * 1408
 
+                # Set image bytes in tool context state
                 image_bytes = b"fake_image_data"
-                image_vector_search(mock_tool_context, image_bytes)
+                mock_tool_context.state["current_image_bytes"] = image_bytes
 
-                # Verify embedding was called
+                # Execute (function now only takes tool_context)
+                image_vector_search(mock_tool_context)
+
+                # Verify embedding was called with the bytes from state
                 mock_embed.assert_called_once_with(image_bytes)
 
 
