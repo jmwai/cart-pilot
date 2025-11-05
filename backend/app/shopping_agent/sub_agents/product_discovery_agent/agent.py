@@ -1,5 +1,7 @@
 from __future__ import annotations
 from google.adk.agents import LlmAgent
+from google.genai import types
+from google.adk.planners import BuiltInPlanner
 from pydantic import BaseModel, Field
 from typing import List, Optional
 
@@ -30,6 +32,12 @@ class ProductSearchOutput(BaseModel):
 
 root_agent = LlmAgent(
     name="product_discovery_agent",
+    planner=BuiltInPlanner(
+        thinking_config=types.ThinkingConfig(
+            include_thoughts=True,
+            thinking_budget=0,
+        )
+    ),
     instruction="""You are the Product Discovery Agent - an expert at finding products using semantic search. Your role is to help users discover products using your specialized search tools.
 
 ## Your Tools:

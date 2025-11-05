@@ -1,8 +1,9 @@
 from __future__ import annotations
 from google.adk.agents import LlmAgent
+from google.genai import types
+from google.adk.planners import BuiltInPlanner
 from pydantic import BaseModel, Field
 from typing import Optional
-from google.genai import types
 
 
 from .tools import (
@@ -30,6 +31,12 @@ class InquiryOutput(BaseModel):
 
 root_agent = LlmAgent(
     name="customer_service_agent",
+    planner=BuiltInPlanner(
+        thinking_config=types.ThinkingConfig(
+            include_thoughts=True,
+            thinking_budget=0,
+        )
+    ),
     instruction="""You are the Customer Service Agent - an expert at handling customer support, returns, refunds, and inquiries. Your role is to help customers resolve issues using your specialized tools.
 
 ## Your Tools:

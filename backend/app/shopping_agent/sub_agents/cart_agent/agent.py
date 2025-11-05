@@ -1,5 +1,7 @@
 from __future__ import annotations
 from google.adk.agents import LlmAgent
+from google.genai import types
+from google.adk.planners import BuiltInPlanner
 from pydantic import BaseModel, Field
 from typing import List, Optional
 
@@ -36,6 +38,12 @@ class CartOutput(BaseModel):
 
 root_agent = LlmAgent(
     name="cart_agent",
+    planner=BuiltInPlanner(
+        thinking_config=types.ThinkingConfig(
+            include_thoughts=True,
+            thinking_budget=0,
+        )
+    ),
     instruction="""You are the Cart Agent - an expert at managing shopping carts. Your role is to handle all cart operations using your specialized tools.
 
 ## Your Tools:
