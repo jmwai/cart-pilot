@@ -76,7 +76,7 @@ jobs:
         project_id: ${{ secrets.PROJECT_ID }}
         timeout: 300s
         env_vars_update_strategy: overwrite
-        flags: '--allow-unauthenticated --port=8080 --memory=512Mi --cpu=1 --max-instances=3 --min-instances=0'
+        # flags: '--allow-unauthenticated --port=8080 --memory=512Mi --cpu=1 --max-instances=3 --min-instances=0'
         env_vars: |
           PROJECT_ID=${{ secrets.PROJECT_ID }}
           REGION=europe-west1
@@ -86,6 +86,14 @@ jobs:
           DB_HOST=db-host:latest
           DB_NAME=db-name:latest
           DB_USER=db-user:latest
+        flags: >-
+          --allow-unauthenticated
+          --port=8080
+          --memory=512Mi
+          --cpu=1
+          --max-instances=3
+          --min-instances=0
+          --service-account=${{ secrets.GCP_SERVICE_ACCOUNT }}
 
   deploy-frontend:
     name: Deploy Frontend Service
