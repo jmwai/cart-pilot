@@ -87,6 +87,7 @@ jobs:
           DB_HOST=db-host:latest
           DB_NAME=db-name:latest
           DB_USER=db-user:latest
+          CLOUD_SQL_CONNECTION_NAME=cloud-sql-connection-name:latest
        
 
   deploy-frontend:

@@ -17,25 +17,44 @@ from .models import Base
 
 settings = get_settings()
 
-# ============================================================================
-# LEGACY psycopg2 Connection Pool (for backward compatibility during migration)
-# ============================================================================
+
 
 _pool: Optional[SimpleConnectionPool] = None
 
+INSTANCE_CONNECTION_NAME = settings.CLOUD_SQL_CONNECTION_NAME
+
+IS_PRODUCTION = os.getenv('K_SERVICE') is not None
 
 def get_conn() -> SimpleConnectionPool:
-    """Legacy function - kept for backward compatibility during migration"""
+    """Creates a new connection pool for either local or prod."""
     global _pool
-    if _pool is None:
-        _pool = SimpleConnectionPool(
-            minconn=1,
-            maxconn=10,
-            host=settings.DB_HOST,
-            port=settings.DB_PORT,
-            dbname=settings.DB_NAME,
-            user=settings.DB_USER,
-            password=settings.DB_PASSWORD)
+    if _pool is not None:
+        return _pool.getconn()
+
+    try:
+        if IS_PRODUCTION:
+            _pool = SimpleConnectionPool(
+                minconn=1,
+                maxconn=10,
+                host=f"/cloudsql/{INSTANCE_CONNECTION_NAME}",
+                dbname=settings.DB_NAME,
+                user=settings.DB_USER,
+                password=settings.DB_PASSWORD
+            )
+        else:
+            _pool = SimpleConnectionPool(
+                minconn=1,
+                maxconn=10,
+                host=settings.DB_HOST,
+                port=5432, 
+                dbname=settings.DB_NAME,
+                user=settings.DB_USER,
+                password=settings.DB_PASSWORD
+            )
+            
+    except Exception as e:
+        raise e
+
     return _pool.getconn()
 
 

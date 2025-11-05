@@ -21,6 +21,7 @@ class Settings(BaseSettings):
 
     GEMINI_MODEL: str = Field("gemini-2.5-flash",
                               description="Gemini model to use for agents")
+    CLOUD_SQL_CONNECTION_NAME: str = Field(..., description="Cloud SQL instance connection name")
 
     model_config = SettingsConfigDict(
         env_file=".env", env_file_encoding="utf-8", extra="ignore")
