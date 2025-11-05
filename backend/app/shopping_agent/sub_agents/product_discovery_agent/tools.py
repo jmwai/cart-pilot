@@ -137,15 +137,120 @@ def text_vector_search(tool_context: ToolContext, query: str) -> List[Dict[str, 
         return out
 
 
-def image_vector_search(tool_context: ToolContext, image_bytes: bytes) -> List[Dict[str, Any]]:
+def image_vector_search(tool_context: ToolContext) -> List[Dict[str, Any]]:
     """
     Performs visual similarity search for products based on an image using SQLAlchemy and pgvector.
+    The image bytes should be in the user's Content message (passed in the request).
+
     Args:
         tool_context: ADK tool context providing access to state
-        image_bytes: The raw bytes of the image to search with.
     Returns:
         A list of up to 10 visually similar products.
     """
+    image_bytes = None
+
+    # Primary: Get image from state (stored by executor from request)
+    image_bytes = tool_context.state.get("current_image_bytes")
+    if image_bytes:
+        print(
+            f"DEBUG image_vector_search: Found image in state (primary), size: {len(image_bytes) if isinstance(image_bytes, bytes) else 'unknown'} bytes", flush=True)
+
+    # Fallback: Try to extract image from the Content message (user's request)
+    # Check if we can access the invocation context's content
+    if not image_bytes:
+        print(f"DEBUG image_vector_search: Image not in state, trying Content message...", flush=True)
+        try:
+            ic = tool_context._invocation_context
+            print(
+                f"DEBUG image_vector_search: invocation_context type: {type(ic)}", flush=True)
+            print(
+                f"DEBUG image_vector_search: invocation_context dir: {[a for a in dir(ic) if not a.startswith('_')][:20]}", flush=True)
+
+            # Try multiple ways to access content
+            content = None
+            if hasattr(ic, 'content'):
+                content = ic.content
+                print(
+                    f"DEBUG image_vector_search: Found content via ic.content: {type(content)}", flush=True)
+            elif hasattr(ic, 'message'):
+                content = ic.message
+                print(
+                    f"DEBUG image_vector_search: Found content via ic.message: {type(content)}", flush=True)
+            elif hasattr(ic, 'user_message'):
+                content = ic.user_message
+                print(
+                    f"DEBUG image_vector_search: Found content via ic.user_message: {type(content)}", flush=True)
+            elif hasattr(ic, 'conversation'):
+                conv = ic.conversation
+                print(
+                    f"DEBUG image_vector_search: Found conversation: {type(conv)}", flush=True)
+                if hasattr(conv, 'contents') and conv.contents:
+                    # Get the last user message
+                    for msg in reversed(conv.contents):
+                        if hasattr(msg, 'role') and msg.role == 'user':
+                            content = msg
+                            print(
+                                f"DEBUG image_vector_search: Found user message in conversation", flush=True)
+                            break
+
+            if content:
+                print(
+                    f"DEBUG image_vector_search: Content type: {type(content)}", flush=True)
+                if hasattr(content, 'parts'):
+                    parts = content.parts
+                    print(
+                        f"DEBUG image_vector_search: Content has {len(parts) if parts else 0} parts", flush=True)
+                    for i, part in enumerate(parts):
+                        print(
+                            f"DEBUG image_vector_search: Part {i}: type={type(part)}, dir={[a for a in dir(part) if not a.startswith('_')][:10]}", flush=True)
+                        if hasattr(part, 'inline_data') and part.inline_data:
+                            image_bytes = part.inline_data.data
+                            print(
+                                f"DEBUG image_vector_search: Found image in Content part {i}, size: {len(image_bytes)} bytes", flush=True)
+                            break
+                        elif hasattr(part, 'file_data') and part.file_data:
+                            # Alternative structure
+                            image_bytes = part.file_data.data
+                            print(
+                                f"DEBUG image_vector_search: Found image in Content part {i} (file_data), size: {len(image_bytes)} bytes", flush=True)
+                            break
+        except Exception as e:
+            print(
+                f"DEBUG image_vector_search: Could not access Content from invocation_context: {e}", flush=True)
+            import traceback
+            traceback.print_exc()
+
+    # Debug: Log state information
+    state_keys = list(tool_context.state.keys()) if hasattr(
+        tool_context.state, 'keys') else []
+    session_id = None
+    try:
+        session_id = tool_context._invocation_context.session.id if hasattr(
+            tool_context._invocation_context, 'session') else 'unknown'
+    except Exception:
+        session_id = 'unknown'
+
+    print(
+        f"DEBUG image_vector_search: Session {session_id}, State keys: {state_keys}")
+    print(
+        f"DEBUG image_vector_search: current_image_bytes type: {type(image_bytes)}, present: {image_bytes is not None}")
+
+    if not image_bytes:
+        available_keys = ', '.join(state_keys) if state_keys else 'none'
+        raise ValueError(
+            f"No image found in Content message or state for session {session_id}. "
+            f"Available state keys: {available_keys}. "
+            f"Please ensure an image was uploaded in the request.")
+
+    # Ensure image_bytes is bytes type
+    if isinstance(image_bytes, str):
+        # If it's a base64 string, decode it
+        import base64
+        image_bytes = base64.b64decode(image_bytes)
+    elif not isinstance(image_bytes, bytes):
+        raise ValueError(
+            f"Invalid image_bytes type: {type(image_bytes)}. Expected bytes or base64 string.")
+
     vec = _embed_image_1408_from_bytes(image_bytes)
     qvec = vector_literal(vec)
 
@@ -159,7 +264,7 @@ def image_vector_search(tool_context: ToolContext, image_bytes: bytes) -> List[D
                 f"price_usd_units, "
                 f"(product_image_embedding <=> '{qvec}'::vector) AS distance "
                 f"FROM catalog_items "
-                f"ORDER BY distance ASC LIMIT 10"
+                f"ORDER BY distance ASC LIMIT 3"
             )
         )
 

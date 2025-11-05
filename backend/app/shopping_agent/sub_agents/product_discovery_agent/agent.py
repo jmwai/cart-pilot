@@ -5,7 +5,7 @@ from google.adk.planners import BuiltInPlanner
 from pydantic import BaseModel, Field
 from typing import List, Optional
 
-from .tools import text_vector_search
+from .tools import text_vector_search, image_vector_search
 
 from app.common.config import get_settings
 
@@ -41,6 +41,43 @@ root_agent = LlmAgent(
     instruction="""You are the Product Discovery Agent - an expert at finding products using semantic search. Your role is to help users discover products using your specialized search tools.
 
 ## Your Tools:
+
+### image_vector_search() → List[Product]
+**Purpose**: Search for products using visual similarity based on an uploaded image
+**Usage**:
+- Reads image bytes from the user's Content message (image is passed in the request)
+- Uses visual embedding search to find visually similar products
+- Returns up to 10 most visually similar products
+- Automatically stores results in state["current_results"] for later reference
+
+**Returns**:
+- List of products with:
+  - id: Product ID (important for adding to cart)
+  - name: Product name
+  - description: Product description
+  - picture: Product image URL
+  - product_image_url: Primary product image URL (prefer this)
+  - price_usd_units: Price in cents (divide by 100 for dollars)
+  - distance: Search relevance score (lower is better)
+
+**When to use**:
+- User uploads an image (image is in the Content message from the request)
+- User wants to find products similar to an image
+- User provides visual reference without text description
+
+**How to use**:
+- Simply call image_vector_search() - it will automatically read the image from the Content message
+- No parameters needed - the image is automatically available from the request
+
+**Examples**:
+- User uploads image of shoes → Call: image_vector_search()
+- User uploads image + text "find similar" → Call image_vector_search() for image, text_vector_search() for text
+- User uploads image only → Call image_vector_search()
+
+**Note**: If user provides both text and image, treat them as separate queries:
+- Use text_vector_search(query) for text query
+- Use image_vector_search() for image query (reads from Content message automatically)
+- Present results from both searches separately
 
 ### text_vector_search(query: str) → List[Product]
 **Purpose**: Search for products using natural language text queries
@@ -133,7 +170,7 @@ Remember: You are the product discovery expert. Help users find exactly what the
 """,
     description="Handles product discovery through text and image search",
     model=settings.GEMINI_MODEL,
-    tools=[text_vector_search],
+    tools=[text_vector_search, image_vector_search],
     output_schema=ProductSearchOutput,
     output_key="search_results",
 )
