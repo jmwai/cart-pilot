@@ -28,7 +28,7 @@ export default async function Home() {
           {/* Landing Page Message */}
           <div className="mb-8 text-center">
             <p className="text-base sm:text-lg text-gray-700 px-4">
-             <b>I have thousands of shoes like this. Use the Shopping Assistant to find and buy any type of shoes</b>
+             <b>I have thousands of shoes like this. Use the Shopping Assistant to find and buy any type of shoes.</b>
             </p>
           </div>
           
