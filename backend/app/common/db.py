@@ -21,7 +21,6 @@ settings = get_settings()
 
 _pool: Optional[SimpleConnectionPool] = None
 
-INSTANCE_CONNECTION_NAME = settings.CLOUD_SQL_CONNECTION_NAME
 
 IS_PRODUCTION = os.getenv('K_SERVICE') is not None
 
@@ -36,7 +35,7 @@ def get_conn() -> SimpleConnectionPool:
             _pool = SimpleConnectionPool(
                 minconn=1,
                 maxconn=10,
-                host=f"/cloudsql/{INSTANCE_CONNECTION_NAME}",
+                host=f"/cloudsql/{settings.CLOUD_SQL_CONNECTION_NAME}",
                 dbname=settings.DB_NAME,
                 user=settings.DB_USER,
                 password=settings.DB_PASSWORD
