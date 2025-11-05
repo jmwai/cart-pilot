@@ -77,7 +77,6 @@ jobs:
         timeout: 300s
         env_vars_update_strategy: overwrite
         flags: '--allow-unauthenticated --port=8080 --memory=512Mi --cpu=1 --max-instances=3 --min-instances=0'
-        service_account: service-562581874833@service-networking.iam.gserviceaccount.com
         env_vars: |
           PROJECT_ID=${{ secrets.PROJECT_ID }}
           REGION=europe-west1
