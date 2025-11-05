@@ -21,7 +21,7 @@ settings = get_settings()
 _pool: Optional[SimpleConnectionPool] = None
 
 
-IS_PRODUCTION = os.getenv('CLOUD_RUN') is not None
+IS_PRODUCTION = os.getenv('K_SERVICE') is not None
 
 
 def get_conn() -> SimpleConnectionPool:
@@ -67,9 +67,23 @@ def put_conn(conn) -> None:
 # SQLAlchemy Engine and Session Management
 # ============================================================================
 
-# Create SQLAlchemy engine with connection pooling
+# Build connection URL and connect_args based on environment (production uses Cloud SQL Unix socket)
+def build_engine_config():
+    """Build SQLAlchemy engine configuration based on environment."""
+    if IS_PRODUCTION:
+        url = f"postgresql+psycopg2://{settings.DB_USER}:{settings.DB_PASSWORD}@/{settings.DB_NAME}"
+        connect_args = {
+            "host": f"/cloudsql/{settings.CLOUD_SQL_CONNECTION_NAME}"}
+        return url, connect_args
+    else:
+        url = f"postgresql+psycopg2://{settings.DB_USER}:{settings.DB_PASSWORD}@{settings.DB_HOST}:{settings.DB_PORT}/{settings.DB_NAME}"
+        connect_args = {}
+        return url, connect_args
+
+connection_url, connect_args = build_engine_config()
 engine = create_engine(
-    f"postgresql+psycopg2://{settings.DB_USER}:{settings.DB_PASSWORD}@{settings.DB_HOST}:{settings.DB_PORT}/{settings.DB_NAME}",
+    connection_url,
+    connect_args=connect_args,
     poolclass=QueuePool,
     pool_size=10,
     max_overflow=20,
