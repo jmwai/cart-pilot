@@ -81,6 +81,7 @@ jobs:
         env_vars: |
           PROJECT_ID=${{ secrets.PROJECT_ID }}
           REGION=europe-west1
+          K_SERVICE=true
         secrets: |
           GOOGLE_API_KEY=google-api-key:latest
           DB_PASSWORD=db-password:latest
