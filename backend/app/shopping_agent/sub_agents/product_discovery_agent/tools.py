@@ -113,7 +113,7 @@ def text_vector_search(tool_context: ToolContext, query: str) -> List[Dict[str, 
                 f"SELECT id, name, description, picture, "
                 f"COALESCE(product_image_url, picture) as product_image_url, "
                 f"price_usd_units, "
-                f"(product_embedding <=> '{qvec}'::vector) AS distance "
+                f"(product_image_embedding <=> '{qvec}'::vector) AS distance "
                 f"FROM catalog_items "
                 f"ORDER BY distance ASC LIMIT 3"
             )
