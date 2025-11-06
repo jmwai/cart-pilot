@@ -149,17 +149,23 @@ class TestContentBuilder:
         assert result is not None
 
     @patch('app.utils.content_builder.types.Part')
-    def test_create_image_part_fallback_none(self, mock_part):
+    @patch('app.utils.content_builder.inspect.signature')
+    def test_create_image_part_fallback_none(self, mock_signature, mock_part):
         """Test creating image part when no method works"""
         builder = ContentBuilder()
-        # Mock that from_inline_data doesn't exist
-        del mock_part.from_inline_data
 
-        mock_part.__init__ = Mock()
+        # Mock that from_inline_data doesn't exist (hasattr returns False)
+        # Mock that __init__ exists but has no matching parameters
+        def hasattr_side_effect(obj, attr):
+            if attr == 'from_inline_data':
+                return False
+            return True  # __init__ exists
+
         mock_sig = Mock()
-        mock_sig.parameters = {}
+        mock_sig.parameters = {}  # No matching parameters
+        mock_signature.return_value = mock_sig
 
-        with patch('app.utils.content_builder.inspect.signature', return_value=mock_sig):
+        with patch('builtins.hasattr', side_effect=hasattr_side_effect):
             result = builder._create_image_part(b"image_data", "image/jpeg")
 
         assert result is None
