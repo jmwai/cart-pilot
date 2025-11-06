@@ -26,6 +26,23 @@ class TestCreateOrder:
             mock_db_session.query.return_value.filter.return_value.all.return_value = [
                 sample_cart_item]
 
+            # Setup payment state (required for create_order)
+            mock_tool_context.state["payment_processed"] = True
+            mock_tool_context.state["payment_data"] = {
+                "payment_id": "payment_123",
+                "amount": 99.99,
+                "payment_method": "credit_card",
+                "payment_mandate_id": "mandate_123",
+                "transaction_id": "txn_123",
+                "status": "completed"
+            }
+            mock_tool_context.state["pending_order_summary"] = {
+                "items": [{"product_id": "prod_123", "name": "Test Product", "quantity": 2, "price": 49.99}],
+                "total_amount": 99.99,
+                "shipping_address": "123 Main St",
+                "item_count": 1
+            }
+
             # Execute
             result = create_order(mock_tool_context)
 
@@ -45,7 +62,18 @@ class TestCreateOrder:
             # Setup mock to return empty cart
             mock_db_session.query.return_value.filter.return_value.all.return_value = []
 
-            # Execute & Assert
+            # Setup payment state (required for create_order, but cart check happens first)
+            mock_tool_context.state["payment_processed"] = True
+            mock_tool_context.state["payment_data"] = {
+                "payment_id": "payment_123",
+                "amount": 99.99,
+                "payment_method": "credit_card",
+                "payment_mandate_id": "mandate_123",
+                "transaction_id": "txn_123",
+                "status": "completed"
+            }
+
+            # Execute & Assert - should fail on empty cart check before payment check
             with pytest.raises(ValueError, match="Cart is empty"):
                 create_order(mock_tool_context)
 
@@ -58,6 +86,23 @@ class TestCreateOrder:
             mock_query = mock_db_session.query.return_value
             mock_query.filter.return_value.all.return_value = [
                 sample_cart_item]
+
+            # Setup payment state (required for create_order)
+            mock_tool_context.state["payment_processed"] = True
+            mock_tool_context.state["payment_data"] = {
+                "payment_id": "payment_123",
+                "amount": 99.99,
+                "payment_method": "credit_card",
+                "payment_mandate_id": "mandate_123",
+                "transaction_id": "txn_123",
+                "status": "completed"
+            }
+            mock_tool_context.state["pending_order_summary"] = {
+                "items": [{"product_id": "prod_123", "name": "Test Product", "quantity": 2, "price": 49.99}],
+                "total_amount": 99.99,
+                "shipping_address": "123 Main St",
+                "item_count": 1
+            }
 
             # Execute
             create_order(mock_tool_context)
@@ -72,6 +117,23 @@ class TestCreateOrder:
             mock_session.return_value.__enter__.return_value = mock_db_session
             mock_db_session.query.return_value.filter.return_value.all.return_value = [
                 sample_cart_item]
+
+            # Setup payment state (required for create_order)
+            mock_tool_context.state["payment_processed"] = True
+            mock_tool_context.state["payment_data"] = {
+                "payment_id": "payment_123",
+                "amount": 99.99,
+                "payment_method": "credit_card",
+                "payment_mandate_id": "mandate_123",
+                "transaction_id": "txn_123",
+                "status": "completed"
+            }
+            mock_tool_context.state["pending_order_summary"] = {
+                "items": [{"product_id": "prod_123", "name": "Test Product", "quantity": 2, "price": 49.99}],
+                "total_amount": 99.99,
+                "shipping_address": "123 Main St",
+                "item_count": 1
+            }
 
             result = create_order(mock_tool_context)
 

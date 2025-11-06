@@ -19,162 +19,292 @@ from app.common.models import Order, Mandate, Payment
 class TestCreatePaymentMandate:
     """Tests for create_payment_mandate() function"""
 
-    def test_create_payment_mandate_success(self, mock_db_session, sample_order):
+    def test_create_payment_mandate_success(self, mock_db_session, mock_tool_context):
         """Test successful creation of payment mandate"""
         with patch('app.payment_agent.tools.get_db_session') as mock_session:
             mock_session.return_value.__enter__.return_value = mock_db_session
 
-            # Setup mock query for order lookup
-            mock_db_session.query.return_value.filter.return_value.first.return_value = sample_order
+            # Setup mock query for cart mandate lookup
+            sample_cart_mandate = Mandate(
+                mandate_id="cart_mandate_123",
+                mandate_type="cart",
+                session_id="session_abc",
+                mandate_data='{"cart_items": []}',
+                status="pending"
+            )
+            mock_db_session.query.return_value.filter.return_value.first.return_value = sample_cart_mandate
+
+            # Setup required state
+            mock_tool_context.state["cart_mandate_id"] = "cart_mandate_123"
+            mock_tool_context.state["selected_payment_method"] = {
+                "id": "pm_visa_1234",
+                "type": "credit_card",
+                "display_name": "Visa •••• 1234"
+            }
+            mock_tool_context.state["pending_order_summary"] = {
+                "items": [],
+                "total_amount": 99.99,
+                "item_count": 1
+            }
 
             # Execute
-            result = create_payment_mandate("order_123", "credit_card")
+            result = create_payment_mandate(mock_tool_context)
 
             # Assert
             assert "mandate_id" in result
-            assert result["order_id"] == "order_123"
             assert result["amount"] == 99.99
-            assert result["payment_method"] == "credit_card"
+            assert result["payment_method_id"] == "pm_visa_1234"
             assert result["status"] == "pending"
             mock_db_session.add.assert_called_once()
 
-    def test_create_payment_mandate_order_not_found(self, mock_db_session):
-        """Test ValueError raised when order doesn't exist"""
+    def test_create_payment_mandate_order_not_found(self, mock_db_session, mock_tool_context):
+        """Test ValueError raised when cart mandate doesn't exist"""
         with patch('app.payment_agent.tools.get_db_session') as mock_session:
             mock_session.return_value.__enter__.return_value = mock_db_session
 
-            # Setup mock query to return None
+            # Setup mock query to return None (cart mandate not found)
             mock_db_session.query.return_value.filter.return_value.first.return_value = None
 
-            # Execute & Assert
-            with pytest.raises(ValueError, match="Order order_999 not found"):
-                create_payment_mandate("order_999", "credit_card")
+            # Setup state with cart mandate ID that doesn't exist
+            mock_tool_context.state["cart_mandate_id"] = "cart_mandate_999"
+            mock_tool_context.state["selected_payment_method"] = {
+                "id": "pm_visa_1234",
+                "type": "credit_card",
+                "display_name": "Visa •••• 1234"
+            }
+            mock_tool_context.state["pending_order_summary"] = {
+                "items": [],
+                "total_amount": 99.99,
+                "item_count": 1
+            }
 
-    def test_create_payment_mandate_type_payment(self, mock_db_session, sample_order):
+            # Execute & Assert
+            with pytest.raises(ValueError, match="Cart mandate cart_mandate_999 not found"):
+                create_payment_mandate(mock_tool_context)
+
+    def test_create_payment_mandate_type_payment(self, mock_db_session, mock_tool_context):
         """Test that mandate_type is set to 'payment'"""
         with patch('app.payment_agent.tools.get_db_session') as mock_session:
             mock_session.return_value.__enter__.return_value = mock_db_session
-            mock_db_session.query.return_value.filter.return_value.first.return_value = sample_order
 
-            result = create_payment_mandate("order_123", "credit_card")
+            sample_cart_mandate = Mandate(
+                mandate_id="cart_mandate_123",
+                mandate_type="cart",
+                session_id="session_abc",
+                mandate_data='{"cart_items": []}',
+                status="pending"
+            )
+            mock_db_session.query.return_value.filter.return_value.first.return_value = sample_cart_mandate
+
+            # Setup required state
+            mock_tool_context.state["cart_mandate_id"] = "cart_mandate_123"
+            mock_tool_context.state["selected_payment_method"] = {
+                "id": "pm_visa_1234",
+                "type": "credit_card",
+                "display_name": "Visa •••• 1234"
+            }
+            mock_tool_context.state["pending_order_summary"] = {
+                "items": [],
+                "total_amount": 99.99,
+                "item_count": 1
+            }
+
+            result = create_payment_mandate(mock_tool_context)
 
             # Check that Mandate was created with correct type
             call_args = mock_db_session.add.call_args[0][0]
             assert call_args.mandate_type == "payment"
 
-    def test_create_payment_mandate_stores_json_data(self, mock_db_session, sample_order):
+    def test_create_payment_mandate_stores_json_data(self, mock_db_session, mock_tool_context):
         """Test that mandate_data is stored as JSON"""
         with patch('app.payment_agent.tools.get_db_session') as mock_session:
             mock_session.return_value.__enter__.return_value = mock_db_session
-            mock_db_session.query.return_value.filter.return_value.first.return_value = sample_order
 
-            create_payment_mandate("order_123", "credit_card")
+            sample_cart_mandate = Mandate(
+                mandate_id="cart_mandate_123",
+                mandate_type="cart",
+                session_id="session_abc",
+                mandate_data='{"cart_items": []}',
+                status="pending"
+            )
+            mock_db_session.query.return_value.filter.return_value.first.return_value = sample_cart_mandate
+
+            # Setup required state
+            mock_tool_context.state["cart_mandate_id"] = "cart_mandate_123"
+            mock_tool_context.state["selected_payment_method"] = {
+                "id": "pm_visa_1234",
+                "type": "credit_card",
+                "display_name": "Visa •••• 1234"
+            }
+            mock_tool_context.state["pending_order_summary"] = {
+                "items": [],
+                "total_amount": 99.99,
+                "item_count": 1
+            }
+
+            create_payment_mandate(mock_tool_context)
 
             # Check that mandate_data is JSON string
             call_args = mock_db_session.add.call_args[0][0]
             assert isinstance(call_args.mandate_data, str)
             # Can parse as JSON
             data = json.loads(call_args.mandate_data)
-            assert "order_id" in data
+            assert "payment_method_id" in data
             assert "amount" in data
+            assert "cart_mandate_id" in data
 
 
 class TestProcessPayment:
     """Tests for process_payment() function"""
 
-    def test_process_payment_success(self, mock_db_session, sample_order):
+    def test_process_payment_success(self, mock_db_session, sample_mandate, mock_tool_context):
         """Test successful payment processing"""
         with patch('app.payment_agent.tools.get_db_session') as mock_session:
             mock_session.return_value.__enter__.return_value = mock_db_session
 
-            # Setup mock for order lookup
-            mock_db_session.query.return_value.filter.return_value.first.return_value = sample_order
+            # Setup mock for mandate lookup
+            mock_db_session.query.return_value.filter.return_value.first.return_value = sample_mandate
 
-            # Mock create_payment_mandate
-            with patch('app.payment_agent.tools.create_payment_mandate') as mock_mandate:
-                mock_mandate.return_value = {"mandate_id": "mandate_123"}
+            # Setup required state
+            mock_tool_context.state["payment_mandate_id"] = "mandate_123"
+            mock_tool_context.state["selected_payment_method"] = {
+                "id": "pm_visa_1234",
+                "type": "credit_card",
+                "display_name": "Visa •••• 1234"
+            }
+            mock_tool_context.state["pending_order_summary"] = {
+                "items": [],
+                "total_amount": 99.99,
+                "item_count": 1
+            }
 
-                # Execute
-                result = process_payment("order_123", "credit_card")
+            # Execute
+            result = process_payment(mock_tool_context)
 
-                # Assert
-                assert "payment_id" in result
-                assert result["order_id"] == "order_123"
-                assert result["amount"] == 99.99
-                assert result["payment_method"] == "credit_card"
-                assert result["status"] == "completed"
-                assert "transaction_id" in result
-                assert result["payment_mandate_id"] == "mandate_123"
+            # Assert
+            assert "payment_id" in result
+            # No order_id when processing before order creation
+            assert result["order_id"] == ""
+            assert result["amount"] == 99.99
+            assert result["payment_method"] == "Visa •••• 1234"
+            assert result["status"] == "completed"
+            assert "transaction_id" in result
+            assert result["payment_mandate_id"] == "mandate_123"
+            # Verify payment state was set
+            assert mock_tool_context.state["payment_processed"] is True
+            assert "payment_data" in mock_tool_context.state
 
-    def test_process_payment_order_not_found(self, mock_db_session):
-        """Test ValueError raised when order doesn't exist"""
+    def test_process_payment_order_not_found(self, mock_db_session, mock_tool_context):
+        """Test ValueError raised when payment mandate doesn't exist"""
         with patch('app.payment_agent.tools.get_db_session') as mock_session:
             mock_session.return_value.__enter__.return_value = mock_db_session
 
-            # Setup mock query to return None
+            # Setup mock query to return None (mandate not found)
             mock_db_session.query.return_value.filter.return_value.first.return_value = None
 
+            # Setup state with payment mandate ID that doesn't exist
+            mock_tool_context.state["payment_mandate_id"] = "mandate_999"
+            mock_tool_context.state["selected_payment_method"] = {
+                "id": "pm_visa_1234",
+                "type": "credit_card",
+                "display_name": "Visa •••• 1234"
+            }
+            mock_tool_context.state["pending_order_summary"] = {
+                "items": [],
+                "total_amount": 99.99,
+                "item_count": 1
+            }
+
             # Execute & Assert
-            with pytest.raises(ValueError, match="Order order_999 not found"):
-                process_payment("order_999", "credit_card")
+            with pytest.raises(ValueError, match="Payment mandate mandate_999 not found"):
+                process_payment(mock_tool_context)
 
-    def test_process_payment_creates_mandate(self, mock_db_session, sample_order):
-        """Test that mandate is created before payment"""
+    def test_process_payment_creates_mandate(self, mock_db_session, sample_mandate, mock_tool_context):
+        """Test that payment processes with existing mandate"""
         with patch('app.payment_agent.tools.get_db_session') as mock_session:
             mock_session.return_value.__enter__.return_value = mock_db_session
-            mock_db_session.query.return_value.filter.return_value.first.return_value = sample_order
+            mock_db_session.query.return_value.filter.return_value.first.return_value = sample_mandate
 
-            with patch('app.payment_agent.tools.create_payment_mandate') as mock_mandate:
-                mock_mandate.return_value = {"mandate_id": "mandate_123"}
+            # Setup required state
+            mock_tool_context.state["payment_mandate_id"] = "mandate_123"
+            mock_tool_context.state["selected_payment_method"] = {
+                "id": "pm_visa_1234",
+                "type": "credit_card",
+                "display_name": "Visa •••• 1234"
+            }
+            mock_tool_context.state["pending_order_summary"] = {
+                "items": [],
+                "total_amount": 99.99,
+                "item_count": 1
+            }
 
-                process_payment("order_123", "credit_card")
+            process_payment(mock_tool_context)
 
-                # Verify mandate was created
-                mock_mandate.assert_called_once_with(
-                    "order_123", "credit_card")
+            # Verify mandate status was updated
+            assert sample_mandate.status == "approved"
 
-    def test_process_payment_updates_order_status(self, mock_db_session, sample_order, sample_mandate):
-        """Test that order status is updated to 'completed'"""
+    def test_process_payment_updates_order_status(self, mock_db_session, sample_order, sample_mandate, mock_tool_context):
+        """Test that order status is updated to 'completed' when order_id is provided"""
         with patch('app.payment_agent.tools.get_db_session') as mock_session:
             mock_session.return_value.__enter__.return_value = mock_db_session
 
-            # Track calls to first() to return order first, then mandate
+            # Track calls to first() to return mandate first, then order
             call_count = [0]
             original_first = Mock()
 
             def first_side_effect(*args, **kwargs):
                 call_count[0] += 1
                 if call_count[0] == 1:
-                    return sample_order  # First query returns order
+                    return sample_mandate  # First query returns mandate
                 else:
-                    return sample_mandate  # Subsequent queries return mandate
+                    return sample_order  # Subsequent queries return order
 
             original_first.side_effect = first_side_effect
 
             # Setup the query chain
             mock_db_session.query.return_value.filter.return_value.first = original_first
 
-            with patch('app.payment_agent.tools.create_payment_mandate') as mock_mandate:
-                mock_mandate.return_value = {"mandate_id": "mandate_123"}
+            # Setup required state
+            mock_tool_context.state["payment_mandate_id"] = "mandate_123"
+            mock_tool_context.state["selected_payment_method"] = {
+                "id": "pm_visa_1234",
+                "type": "credit_card",
+                "display_name": "Visa •••• 1234"
+            }
+            mock_tool_context.state["pending_order_summary"] = {
+                "items": [],
+                "total_amount": 99.99,
+                "item_count": 1
+            }
 
-                process_payment("order_123", "credit_card")
+            process_payment(mock_tool_context, order_id="order_123")
 
-                # Verify order status was updated to completed
-                assert sample_order.status == "completed"
+            # Verify order status was updated to completed
+            assert sample_order.status == "completed"
 
-    def test_process_payment_generates_transaction_id(self, mock_db_session, sample_order):
+    def test_process_payment_generates_transaction_id(self, mock_db_session, sample_mandate, mock_tool_context):
         """Test that transaction_id is generated"""
         with patch('app.payment_agent.tools.get_db_session') as mock_session:
             mock_session.return_value.__enter__.return_value = mock_db_session
-            mock_db_session.query.return_value.filter.return_value.first.return_value = sample_order
+            mock_db_session.query.return_value.filter.return_value.first.return_value = sample_mandate
 
-            with patch('app.payment_agent.tools.create_payment_mandate') as mock_mandate:
-                mock_mandate.return_value = {"mandate_id": "mandate_123"}
+            # Setup required state
+            mock_tool_context.state["payment_mandate_id"] = "mandate_123"
+            mock_tool_context.state["selected_payment_method"] = {
+                "id": "pm_visa_1234",
+                "type": "credit_card",
+                "display_name": "Visa •••• 1234"
+            }
+            mock_tool_context.state["pending_order_summary"] = {
+                "items": [],
+                "total_amount": 99.99,
+                "item_count": 1
+            }
 
-                result = process_payment("order_123", "credit_card")
+            result = process_payment(mock_tool_context)
 
-                assert "transaction_id" in result
-                assert result["transaction_id"].startswith("txn_")
+            assert "transaction_id" in result
+            assert result["transaction_id"].startswith("txn_")
 
 
 class TestGetPaymentStatus:
