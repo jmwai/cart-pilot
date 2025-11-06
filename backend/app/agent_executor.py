@@ -27,6 +27,35 @@ from app.shopping_agent import root_agent as shopping_agent
 
 logger = logging.getLogger(__name__)
 
+# Tool name -> Status message mapping for dynamic status updates
+# Maps function names to user-friendly status messages sent via A2A TaskStatusUpdateEvent
+TOOL_STATUS_MESSAGES = {
+    # Product Discovery
+    'text_vector_search': 'Searching for products...',
+    'image_vector_search': 'Finding visually similar products...',
+
+    # Cart Operations
+    'add_to_cart': 'Adding item to cart...',
+    'get_cart': 'Loading your cart...',
+    'update_cart_item': 'Updating cart...',
+    'remove_from_cart': 'Removing item from cart...',
+    'clear_cart': 'Clearing cart...',
+    'get_cart_total': 'Calculating cart total...',
+
+    # Checkout
+    'create_order': 'Processing your order...',
+    'get_order_status': 'Checking order status...',
+    'cancel_order': 'Canceling order...',
+    'validate_cart_for_checkout': 'Validating cart...',
+
+    # Customer Service
+    'create_inquiry': 'Creating your inquiry...',
+    'get_inquiry_status': 'Checking inquiry status...',
+    'search_faq': 'Searching FAQ...',
+    'initiate_return': 'Initiating return...',
+    'get_order_inquiries': 'Retrieving order inquiries...',
+}
+
 
 class ShoppingAgentExecutor(AgentExecutor):
     """Executor that bridges A2A protocol to ADK agents."""
@@ -557,6 +586,7 @@ class ShoppingAgentExecutor(AgentExecutor):
             products_sent = False
             cart_sent = False
             order_sent = False
+            order_summary_sent = False  # Track if order summary artifact was sent
 
             # Track initial state to detect modifications
             initial_session = await self.runner.session_service.get_session(
@@ -570,6 +600,7 @@ class ShoppingAgentExecutor(AgentExecutor):
             initial_cart = initial_state.get(
                 "cart") or initial_state.get("cart_items", [])
             initial_order = initial_state.get("current_order")
+            initial_order_summary = initial_state.get("pending_order_summary")
 
             # Helper function to format products
             def format_products(products_list):
@@ -609,6 +640,19 @@ class ShoppingAgentExecutor(AgentExecutor):
                     }
                 return None
 
+            # Helper function to format order summary
+            def format_order_summary(summary_state):
+                summary_data = summary_state.get("pending_order_summary")
+                if not summary_data or summary_data is None or not isinstance(summary_data, dict):
+                    return None
+                return {
+                    "type": "order_summary",
+                    "items": summary_data.get("items", []),
+                    "total_amount": summary_data.get("total_amount", 0.0),
+                    "shipping_address": summary_data.get("shipping_address", ""),
+                    "item_count": summary_data.get("item_count", 0),
+                }
+
             # Helper function to format order
             def format_order(order_state):
                 order_data = order_state.get("current_order")
@@ -626,6 +670,7 @@ class ShoppingAgentExecutor(AgentExecutor):
 
             # Process with ADK agent - stream events as they arrive
             # ADK Runner automatically persists state changes made through tool_context.state
+            last_function_name = None  # Track last function to avoid duplicate status updates
             async for event in self.runner.run_async(
                 user_id=user_id, session_id=session_id, new_message=content
             ):
@@ -641,8 +686,95 @@ class ShoppingAgentExecutor(AgentExecutor):
                                 name=self.artifact_name,
                             )
                         elif hasattr(part, 'function_call'):
-                            # Function calls are handled internally by ADK
-                            pass
+                            # Extract function name and update status message via A2A TaskStatusUpdateEvent
+                            function_call = part.function_call
+                            function_name = None
+
+                            # Try multiple ways to extract function name (defensive programming)
+                            if hasattr(function_call, 'name'):
+                                function_name = function_call.name
+                            elif hasattr(function_call, 'function_name'):
+                                function_name = function_call.function_name
+                            elif isinstance(function_call, dict):
+                                function_name = function_call.get(
+                                    'name') or function_call.get('function_name')
+
+                            # Update status message if function name found and different from last
+                            if function_name and function_name != last_function_name:
+                                if function_name in TOOL_STATUS_MESSAGES:
+                                    status_message = TOOL_STATUS_MESSAGES[function_name]
+                                    logger.info(
+                                        f"Updating status for function call: {function_name} -> {status_message}")
+                                    # Send TaskStatusUpdateEvent via A2A streaming protocol
+                                    await updater.update_status(
+                                        TaskState.working,  # A2A TaskState enum value
+                                        new_agent_text_message(  # Creates A2A Message with TextPart
+                                            status_message, task.context_id, task.id
+                                        ),
+                                    )
+                                    last_function_name = function_name
+                                else:
+                                    # Log unknown function for future addition to mapping
+                                    logger.debug(
+                                        f"Function '{function_name}' not in TOOL_STATUS_MESSAGES mapping")
+                                    # Optionally update with generic message for unknown functions
+                                    # Uncomment below if desired:
+                                    # await updater.update_status(
+                                    #     TaskState.working,
+                                    #     new_agent_text_message(
+                                    #         self.status_message, task.context_id, task.id
+                                    #     ),
+                                    # )
+
+                # Handle final response - ensure any remaining artifacts are sent
+                if event.is_final_response():
+                    try:
+                        current_session = await self.runner.session_service.get_session(
+                            app_name=self.agent.name,
+                            user_id=user_id,
+                            session_id=session_id
+                        )
+                        session_state = current_session.state if hasattr(
+                            current_session, 'state') else {}
+
+                        # Send order summary if it was prepared but not yet sent
+                        if not order_summary_sent and "pending_order_summary" in session_state:
+                            current_order_summary = session_state.get(
+                                "pending_order_summary")
+                            # Only send if summary is new (different from initial) and not None
+                            if current_order_summary and current_order_summary is not None and current_order_summary != initial_order_summary:
+                                order_summary_artifact_data = format_order_summary(
+                                    session_state)
+                                if order_summary_artifact_data:
+                                    await updater.add_artifact(
+                                        [Part(root=DataPart(
+                                            data=order_summary_artifact_data,
+                                            mimeType="application/json"
+                                        ))],
+                                        name="order_summary"
+                                    )
+                                    order_summary_sent = True
+
+                        # Send order if it was created but not yet sent
+                        if not order_sent and "current_order" in session_state:
+                            current_order = session_state.get("current_order")
+                            if current_order and current_order != initial_order:
+                                if not initial_order or current_order.get("order_id") != initial_order.get("order_id"):
+                                    order_artifact_data = format_order(
+                                        session_state)
+                                    if order_artifact_data:
+                                        await updater.add_artifact(
+                                            [Part(root=DataPart(
+                                                data=order_artifact_data,
+                                                mimeType="application/json"
+                                            ))],
+                                            name="order"
+                                        )
+                                        order_sent = True
+                    except Exception as final_state_error:
+                        logger.error(
+                            f"Error processing final response state: {final_state_error}")
+                        pass
 
                 # Check for state updates (products, cart) periodically
                 # Check state after every event, but only send if available and not already sent
@@ -694,6 +826,24 @@ class ShoppingAgentExecutor(AgentExecutor):
                                         name="cart"
                                     )
                                     cart_sent = True
+
+                        # Stream order summary ONLY if it was prepared during this request
+                        if not order_summary_sent and "pending_order_summary" in session_state:
+                            current_order_summary = session_state.get(
+                                "pending_order_summary")
+                            # Only send if summary is new (different from initial) or was just prepared
+                            if current_order_summary and current_order_summary != initial_order_summary:
+                                order_summary_artifact_data = format_order_summary(
+                                    session_state)
+                                if order_summary_artifact_data:
+                                    await updater.add_artifact(
+                                        [Part(root=DataPart(
+                                            data=order_summary_artifact_data,
+                                            mimeType="application/json"
+                                        ))],
+                                        name="order_summary"
+                                    )
+                                    order_summary_sent = True
 
                         # Stream order ONLY if it was created during this request
                         if not order_sent and "current_order" in session_state:
@@ -764,6 +914,23 @@ class ShoppingAgentExecutor(AgentExecutor):
                             name="cart"
                         )
 
+            # Ensure order summary is sent if it was prepared (not already sent)
+            if not order_summary_sent:
+                current_order_summary = session_state.get(
+                    "pending_order_summary")
+                # Only send if summary is new (different from initial) and not None
+                if current_order_summary and current_order_summary is not None and current_order_summary != initial_order_summary:
+                    order_summary_artifact_data = format_order_summary(
+                        session_state)
+                    if order_summary_artifact_data:
+                        await updater.add_artifact(
+                            [Part(root=DataPart(
+                                data=order_summary_artifact_data,
+                                mimeType="application/json"
+                            ))],
+                            name="order_summary"
+                        )
+
             # Ensure order is sent if it was created (not already sent)
             if not order_sent:
                 current_order = session_state.get("current_order")
@@ -781,8 +948,18 @@ class ShoppingAgentExecutor(AgentExecutor):
                                 name="order"
                             )
 
-            # Complete the task
-            await updater.complete()
+            # Complete the task - ensure this always happens
+            try:
+                logger.info("Completing task and sending completion event")
+                await updater.complete()
+                logger.info("Task completed successfully")
+            except Exception as complete_error:
+                logger.error(f"Error completing task: {complete_error}")
+                # Still try to mark as complete even if there's an error
+                try:
+                    await updater.complete()
+                except:
+                    pass
 
         except Exception as e:
             # Handle errors gracefully

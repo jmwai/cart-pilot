@@ -1,10 +1,10 @@
-import { Product, ProductListData, CartItem, CartData, Order, OrderData, OrderItem } from '@/types';
+import { Product, ProductListData, CartItem, CartData, Order, OrderData, OrderItem, OrderSummary, OrderSummaryData } from '@/types';
 
 /**
  * Streaming event from A2A protocol
  */
 export interface StreamingEvent {
-  type: 'text' | 'products' | 'cart' | 'order' | 'status' | 'complete';
+  type: 'text' | 'products' | 'cart' | 'order' | 'order_summary' | 'status' | 'complete';
   data: any;
   isIncremental: boolean;
 }
@@ -170,6 +170,15 @@ export function parseStreamingEvent(event: any): StreamingEvent | null {
   
   // Handle status updates
   if (event.kind === 'status-update') {
+    // Check if this is a final completion event
+    if (event.final === true || event.status?.state === 'completed') {
+      return {
+        type: 'complete',
+        data: {},
+        isIncremental: false
+      };
+    }
+    
     // Extract and ensure message is a string
     let statusMessage = '';
     
@@ -352,6 +361,29 @@ export function parseStreamingEvent(event: any): StreamingEvent | null {
           }
         } catch (error) {
           console.error('Error parsing order data:', error);
+        }
+      }
+      
+      // Order summary artifact
+      if (part.kind === 'data' && artifact.name === 'order_summary') {
+        try {
+          const data = part.data as OrderSummaryData;
+          if (data?.type === 'order_summary') {
+            return {
+              type: 'order_summary',
+              data: { 
+                orderSummary: {
+                  items: data.items.map(formatOrderItem),
+                  total_amount: data.total_amount,
+                  shipping_address: data.shipping_address,
+                  item_count: data.item_count || data.items.length,
+                }
+              },
+              isIncremental: artifact.incremental !== false
+            };
+          }
+        } catch (error) {
+          console.error('Error parsing order summary data:', error);
         }
       }
     }

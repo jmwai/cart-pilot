@@ -81,6 +81,21 @@ export interface OrderData {
   created_at?: string;
 }
 
+export interface OrderSummary {
+  items: OrderItem[];
+  total_amount: number;
+  shipping_address?: string;
+  item_count: number;
+}
+
+export interface OrderSummaryData {
+  type: "order_summary";
+  items: OrderItem[];
+  total_amount: number;
+  shipping_address?: string;
+  item_count: number;
+}
+
 // Chat Types
 export interface ChatMessage {
   id: string; // Unique message ID
@@ -88,6 +103,10 @@ export interface ChatMessage {
   content: string;
   timestamp: Date;
   imageUrl?: string; // URL for displaying uploaded images
+  products?: Product[]; // Products displayed in this message
+  cart?: CartItem[]; // Cart items displayed in this message
+  order?: Order; // Order displayed in this message
+  orderSummary?: OrderSummary; // Order summary displayed in this message
 }
 
 // UI State Types

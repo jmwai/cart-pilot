@@ -1,18 +1,20 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
-import { ChatMessage, Product, CartItem, Order } from '@/types';
+import { ChatMessage, Product, CartItem, Order, OrderSummary } from '@/types';
 import { shoppingAPI } from '@/lib/shopping-api';
 import { parseA2AResponse, parseStreamingEvent } from '@/lib/a2a-parser';
 import ProductList from './ProductList';
 import CartDisplay from './CartDisplay';
 import OrderDisplay from './OrderDisplay';
+import OrderSummaryDisplay from './OrderSummaryDisplay';
 import { v4 as uuidv4 } from 'uuid';
 
 interface MessageWithArtifacts extends ChatMessage {
   products?: Product[];
   cart?: CartItem[];
   order?: Order;
+  orderSummary?: OrderSummary;
 }
 
 export default function Chatbox() {
@@ -91,6 +93,7 @@ export default function Chatbox() {
     products?: Product[], 
     cart?: CartItem[],
     order?: Order,
+    orderSummary?: OrderSummary,
     imageUrl?: string
   ) => {
     setMessages(prev => [...prev, {
@@ -101,6 +104,7 @@ export default function Chatbox() {
       products,
       cart,
       order,
+      orderSummary,
       imageUrl
     }]);
   };
@@ -112,7 +116,8 @@ export default function Chatbox() {
     content: string,
     products?: Product[],
     cart?: CartItem[],
-    order?: Order
+    order?: Order,
+    orderSummary?: OrderSummary
   ): number => {
     // Check if we already have an assistant message for this request
     if (assistantMessageIndexRef.current >= 0 && 
@@ -162,7 +167,7 @@ export default function Chatbox() {
     }
     
     // Add user message with image if present
-    addMessage('user', userMessage || (imageToSend ? 'Image search' : ''), undefined, undefined, undefined, imageUrl);
+    addMessage('user', userMessage || (imageToSend ? 'Image search' : ''), undefined, undefined, undefined, undefined, imageUrl);
     setLoadingMessage(imageToSend ? 'Searching for similar products...' : getContextualLoadingMessage(userMessage));
     setIsLoading(true);
     
@@ -174,6 +179,7 @@ export default function Chatbox() {
     let streamingProducts: Product[] | undefined = undefined;
     let streamingCart: CartItem[] | undefined = undefined;
     let streamingOrder: Order | undefined = undefined;
+    let streamingOrderSummary: OrderSummary | undefined = undefined;
 
     // Helper function to safely extract status message
     const extractStatusMessage = (data: any): string => {
@@ -222,13 +228,23 @@ export default function Chatbox() {
 
     try {
       // Use streaming method - pass text and/or image
-      for await (const event of shoppingAPI.sendMessageStream(userMessage || undefined, imageToSend || undefined)) {
-        const parsedEvent = parseStreamingEvent(event);
-        
-        if (!parsedEvent) continue;
-        
-        try {
-          switch (parsedEvent.type) {
+      // Add timeout to prevent infinite loading
+      const streamTimeout = setTimeout(() => {
+        console.warn('Stream timeout - forcing completion');
+        setIsLoading(false);
+        assistantMessageIndexRef.current = -1;
+      }, 30000); // 30 second timeout
+      
+      try {
+        for await (const event of shoppingAPI.sendMessageStream(userMessage || undefined, imageToSend || undefined)) {
+          clearTimeout(streamTimeout); // Clear timeout on successful event
+          
+          const parsedEvent = parseStreamingEvent(event);
+          
+          if (!parsedEvent) continue;
+          
+          try {
+            switch (parsedEvent.type) {
             case 'text':
               // Accumulate text incrementally
               // Ensure text is a string
@@ -243,7 +259,7 @@ export default function Chatbox() {
               // Update or create assistant message in real-time using functional setState
               setMessages(prev => {
                 const updated = [...prev];
-                const index = ensureAssistantMessage(updated, safeText, streamingProducts, streamingCart, streamingOrder);
+                const index = ensureAssistantMessage(updated, safeText, streamingProducts, streamingCart, streamingOrder, streamingOrderSummary);
                 
                 if (index < updated.length && updated[index]) {
                   // Update existing message
@@ -252,7 +268,8 @@ export default function Chatbox() {
                     content: safeText,
                     products: streamingProducts,
                     cart: streamingCart,
-                    order: streamingOrder
+                    order: streamingOrder,
+                    orderSummary: streamingOrderSummary
                   };
                 } else {
                   // Create new message (shouldn't happen due to ensureAssistantMessage, but safety check)
@@ -263,7 +280,41 @@ export default function Chatbox() {
                     timestamp: new Date(),
                     products: streamingProducts,
                     cart: streamingCart,
+                    order: streamingOrder,
+                    orderSummary: streamingOrderSummary
+                  });
+                  assistantMessageIndexRef.current = updated.length - 1;
+                }
+                return updated;
+              });
+              break;
+              
+            case 'order_summary':
+              // Update order summary immediately
+              streamingOrderSummary = parsedEvent.data.orderSummary;
+              
+              setMessages(prev => {
+                const updated = [...prev];
+                const index = ensureAssistantMessage(updated, streamingText, streamingProducts, streamingCart, streamingOrder, streamingOrderSummary);
+                
+                if (index < updated.length && updated[index]) {
+                  updated[index] = {
+                    ...updated[index],
+                    orderSummary: streamingOrderSummary,
+                    products: streamingProducts,
+                    cart: streamingCart,
                     order: streamingOrder
+                  };
+                } else {
+                  updated.push({
+                    id: uuidv4(),
+                    role: 'assistant',
+                    content: streamingText,
+                    timestamp: new Date(),
+                    products: streamingProducts,
+                    cart: streamingCart,
+                    order: streamingOrder,
+                    orderSummary: streamingOrderSummary
                   });
                   assistantMessageIndexRef.current = updated.length - 1;
                 }
@@ -277,14 +328,15 @@ export default function Chatbox() {
               
               setMessages(prev => {
                 const updated = [...prev];
-                const index = ensureAssistantMessage(updated, streamingText, streamingProducts, streamingCart, streamingOrder);
+                const index = ensureAssistantMessage(updated, streamingText, streamingProducts, streamingCart, streamingOrder, streamingOrderSummary);
                 
                 if (index < updated.length && updated[index]) {
                   updated[index] = {
                     ...updated[index],
                     products: streamingProducts,
                     cart: streamingCart,
-                    order: streamingOrder
+                    order: streamingOrder,
+                    orderSummary: streamingOrderSummary
                   };
                 } else {
                   updated.push({
@@ -294,7 +346,8 @@ export default function Chatbox() {
                     timestamp: new Date(),
                     products: streamingProducts,
                     cart: streamingCart,
-                    order: streamingOrder
+                    order: streamingOrder,
+                    orderSummary: streamingOrderSummary
                   });
                   assistantMessageIndexRef.current = updated.length - 1;
                 }
@@ -308,7 +361,7 @@ export default function Chatbox() {
               
               setMessages(prev => {
                 const updated = [...prev];
-                const index = ensureAssistantMessage(updated, streamingText, streamingProducts, streamingCart, streamingOrder);
+                const index = ensureAssistantMessage(updated, streamingText, streamingProducts, streamingCart, streamingOrder, streamingOrderSummary);
                 
                 if (index < updated.length && updated[index]) {
                   updated[index] = {
@@ -339,14 +392,15 @@ export default function Chatbox() {
               
               setMessages(prev => {
                 const updated = [...prev];
-                const index = ensureAssistantMessage(updated, streamingText, streamingProducts, streamingCart, streamingOrder);
+                const index = ensureAssistantMessage(updated, streamingText, streamingProducts, streamingCart, streamingOrder, streamingOrderSummary);
                 
                 if (index < updated.length && updated[index]) {
                   updated[index] = {
                     ...updated[index],
                     order: streamingOrder,
                     products: streamingProducts,
-                    cart: streamingCart
+                    cart: streamingCart,
+                    orderSummary: streamingOrderSummary
                   };
                 } else {
                   updated.push({
@@ -356,7 +410,8 @@ export default function Chatbox() {
                     timestamp: new Date(),
                     products: streamingProducts,
                     cart: streamingCart,
-                    order: streamingOrder
+                    order: streamingOrder,
+                    orderSummary: streamingOrderSummary
                   });
                   assistantMessageIndexRef.current = updated.length - 1;
                 }
@@ -381,7 +436,7 @@ export default function Chatbox() {
               setMessages(prev => {
                 const updated = [...prev];
                 const finalText = typeof streamingText === 'string' ? streamingText : String(streamingText || '');
-                const index = ensureAssistantMessage(updated, finalText, streamingProducts, streamingCart, streamingOrder);
+                const index = ensureAssistantMessage(updated, finalText, streamingProducts, streamingCart, streamingOrder, streamingOrderSummary);
                 
                 if (index < updated.length && updated[index]) {
                   updated[index] = {
@@ -389,7 +444,8 @@ export default function Chatbox() {
                     content: finalText || 'I received your message.',
                     products: streamingProducts,
                     cart: streamingCart,
-                    order: streamingOrder
+                    order: streamingOrder,
+                    orderSummary: streamingOrderSummary
                   };
                 } else {
                   updated.push({
@@ -399,7 +455,8 @@ export default function Chatbox() {
                     timestamp: new Date(),
                     products: streamingProducts,
                     cart: streamingCart,
-                    order: streamingOrder
+                    order: streamingOrder,
+                    orderSummary: streamingOrderSummary
                   });
                   assistantMessageIndexRef.current = updated.length - 1;
                 }
@@ -408,35 +465,45 @@ export default function Chatbox() {
               // Reset index after completion
               assistantMessageIndexRef.current = -1;
               break;
+            }
+          } catch (eventError) {
+            // Handle individual event processing errors
+            console.error('Error processing streaming event:', eventError);
+            // Continue processing other events
           }
-        } catch (eventError) {
-          // Handle individual event processing errors
-          console.error('Error processing streaming event:', eventError);
-          // Continue processing other events
+        }
+        
+        // Clear timeout when stream completes normally
+        clearTimeout(streamTimeout);
+        
+        // Ensure loading is stopped even if no complete event received
+        setIsLoading(false);
+        // Reset index after stream completes
+        assistantMessageIndexRef.current = -1;
+      } catch (streamError) {
+        // Handle stream errors
+        console.error('Error in stream:', streamError);
+        clearTimeout(streamTimeout);
+        setIsLoading(false);
+        assistantMessageIndexRef.current = -1;
+        
+        // Save partial results if available
+        if (streamingText || streamingProducts || streamingCart || streamingOrder || streamingOrderSummary) {
+          addMessage(
+            'assistant',
+            streamingText || 'I received your message.',
+            streamingProducts,
+            streamingCart,
+            streamingOrder,
+            streamingOrderSummary
+          );
+        } else {
+          addMessage('assistant', 'Sorry, I encountered an error. Please try again.');
         }
       }
-      
-      // Ensure loading is stopped even if no complete event received
-      setIsLoading(false);
-      // Reset index after stream completes
-      assistantMessageIndexRef.current = -1;
-      
     } catch (error) {
       console.error('Error in streaming:', error);
-      // Save partial results if available
-      if (streamingText || streamingProducts || streamingCart || streamingOrder) {
-        addMessage(
-          'assistant',
-          streamingText || 'I received your message.',
-          streamingProducts,
-          streamingCart,
-          streamingOrder
-        );
-      } else {
-        addMessage('assistant', 'Sorry, I encountered an error. Please try again.');
-      }
       setIsLoading(false);
-      // Reset index after error
       assistantMessageIndexRef.current = -1;
     }
   };
@@ -499,10 +566,12 @@ export default function Chatbox() {
     assistantMessageIndexRef.current = -1;
     
     // Initialize streaming message state
+    // Initialize streaming message state
     let streamingText = '';
     let streamingProducts: Product[] | undefined = undefined;
     let streamingCart: CartItem[] | undefined = undefined;
     let streamingOrder: Order | undefined = undefined;
+    let streamingOrderSummary: OrderSummary | undefined = undefined;
 
     // Helper function to safely extract status message
     const extractStatusMessage = (data: any): string => {
@@ -563,7 +632,7 @@ export default function Chatbox() {
                 
                 setMessages(prev => {
                   const updated = [...prev];
-                  const index = ensureAssistantMessage(updated, safeText, streamingProducts, streamingCart, streamingOrder);
+                  const index = ensureAssistantMessage(updated, safeText, streamingProducts, streamingCart, streamingOrder, streamingOrderSummary);
                   
                   if (index < updated.length && updated[index]) {
                     updated[index] = {
@@ -594,14 +663,15 @@ export default function Chatbox() {
                 
                 setMessages(prev => {
                   const updated = [...prev];
-                  const index = ensureAssistantMessage(updated, streamingText, streamingProducts, streamingCart, streamingOrder);
+                  const index = ensureAssistantMessage(updated, streamingText, streamingProducts, streamingCart, streamingOrder, streamingOrderSummary);
                   
                   if (index < updated.length && updated[index]) {
                     updated[index] = {
                       ...updated[index],
                       products: streamingProducts,
                       cart: streamingCart,
-                      order: streamingOrder
+                      order: streamingOrder,
+                      orderSummary: streamingOrderSummary
                     };
                   } else {
                     updated.push({
@@ -611,7 +681,8 @@ export default function Chatbox() {
                       timestamp: new Date(),
                       products: streamingProducts,
                       cart: streamingCart,
-                      order: streamingOrder
+                      order: streamingOrder,
+                      orderSummary: streamingOrderSummary
                     });
                     assistantMessageIndexRef.current = updated.length - 1;
                   }
@@ -624,13 +695,46 @@ export default function Chatbox() {
                 
                 setMessages(prev => {
                   const updated = [...prev];
-                  const index = ensureAssistantMessage(updated, streamingText, streamingProducts, streamingCart, streamingOrder);
+                  const index = ensureAssistantMessage(updated, streamingText, streamingProducts, streamingCart, streamingOrder, streamingOrderSummary);
                   
                   if (index < updated.length && updated[index]) {
                     updated[index] = {
                       ...updated[index],
                       cart: streamingCart,
                       products: streamingProducts,
+                      order: streamingOrder,
+                      orderSummary: streamingOrderSummary
+                    };
+                  } else {
+                    updated.push({
+                      id: uuidv4(),
+                      role: 'assistant',
+                      content: streamingText,
+                      timestamp: new Date(),
+                      products: streamingProducts,
+                      cart: streamingCart,
+                      order: streamingOrder,
+                      orderSummary: streamingOrderSummary
+                    });
+                    assistantMessageIndexRef.current = updated.length - 1;
+                  }
+                  return updated;
+                });
+                break;
+                
+              case 'order_summary':
+                streamingOrderSummary = parsedEvent.data.orderSummary;
+                
+                setMessages(prev => {
+                  const updated = [...prev];
+                  const index = ensureAssistantMessage(updated, streamingText, streamingProducts, streamingCart, streamingOrder, streamingOrderSummary);
+                  
+                  if (index < updated.length && updated[index]) {
+                    updated[index] = {
+                      ...updated[index],
+                      orderSummary: streamingOrderSummary,
+                      products: streamingProducts,
+                      cart: streamingCart,
                       order: streamingOrder
                     };
                   } else {
@@ -641,7 +745,8 @@ export default function Chatbox() {
                       timestamp: new Date(),
                       products: streamingProducts,
                       cart: streamingCart,
-                      order: streamingOrder
+                      order: streamingOrder,
+                      orderSummary: streamingOrderSummary
                     });
                     assistantMessageIndexRef.current = updated.length - 1;
                   }
@@ -654,7 +759,7 @@ export default function Chatbox() {
                 
                 setMessages(prev => {
                   const updated = [...prev];
-                  const index = ensureAssistantMessage(updated, streamingText, streamingProducts, streamingCart, streamingOrder);
+                  const index = ensureAssistantMessage(updated, streamingText, streamingProducts, streamingCart, streamingOrder, streamingOrderSummary);
                   
                   if (index < updated.length && updated[index]) {
                     updated[index] = {
@@ -693,7 +798,7 @@ export default function Chatbox() {
                 setMessages(prev => {
                   const updated = [...prev];
                   const finalText = typeof streamingText === 'string' ? streamingText : String(streamingText || '');
-                  const index = ensureAssistantMessage(updated, finalText, streamingProducts, streamingCart, streamingOrder);
+                  const index = ensureAssistantMessage(updated, finalText, streamingProducts, streamingCart, streamingOrder, streamingOrderSummary);
                   
                   if (index < updated.length && updated[index]) {
                     updated[index] = {
@@ -701,7 +806,8 @@ export default function Chatbox() {
                       content: finalText || 'I received your message.',
                       products: streamingProducts,
                       cart: streamingCart,
-                      order: streamingOrder
+                      order: streamingOrder,
+                      orderSummary: streamingOrderSummary
                     };
                   } else {
                     updated.push({
@@ -711,7 +817,8 @@ export default function Chatbox() {
                       timestamp: new Date(),
                       products: streamingProducts,
                       cart: streamingCart,
-                      order: streamingOrder
+                      order: streamingOrder,
+                      orderSummary: streamingOrderSummary
                     });
                     assistantMessageIndexRef.current = updated.length - 1;
                   }
@@ -726,13 +833,14 @@ export default function Chatbox() {
         }
       } catch (error) {
         console.error('Error in streaming:', error);
-        if (streamingText || streamingProducts || streamingCart || streamingOrder) {
+        if (streamingText || streamingProducts || streamingCart || streamingOrder || streamingOrderSummary) {
           addMessage(
             'assistant',
             streamingText || 'I received your message.',
             streamingProducts,
             streamingCart,
-            streamingOrder
+            streamingOrder,
+            streamingOrderSummary
           );
         } else {
           addMessage('assistant', 'Sorry, I encountered an error. Please try again.');
@@ -819,10 +927,12 @@ export default function Chatbox() {
     assistantMessageIndexRef.current = -1;
     
     // Initialize streaming message state
+    // Initialize streaming message state
     let streamingText = '';
     let streamingProducts: Product[] | undefined = undefined;
     let streamingCart: CartItem[] | undefined = undefined;
     let streamingOrder: Order | undefined = undefined;
+    let streamingOrderSummary: OrderSummary | undefined = undefined;
 
     // Helper function to safely extract status message
     const extractStatusMessage = (data: any): string => {
@@ -890,7 +1000,7 @@ export default function Chatbox() {
               
               setMessages(prev => {
                 const updated = [...prev];
-                const index = ensureAssistantMessage(updated, promptSafeText, streamingProducts, streamingCart, streamingOrder);
+                const index = ensureAssistantMessage(updated, promptSafeText, streamingProducts, streamingCart, streamingOrder, streamingOrderSummary);
                 
                 if (index < updated.length && updated[index]) {
                   updated[index] = {
@@ -920,14 +1030,15 @@ export default function Chatbox() {
               streamingProducts = parsedEvent.data.products;
               setMessages(prev => {
                 const updated = [...prev];
-                const index = ensureAssistantMessage(updated, streamingText, streamingProducts, streamingCart, streamingOrder);
+                const index = ensureAssistantMessage(updated, streamingText, streamingProducts, streamingCart, streamingOrder, streamingOrderSummary);
                 
                 if (index < updated.length && updated[index]) {
                   updated[index] = {
                     ...updated[index],
                     products: streamingProducts,
                     cart: streamingCart,
-                    order: streamingOrder
+                    order: streamingOrder,
+                    orderSummary: streamingOrderSummary
                   };
                 } else {
                   updated.push({
@@ -937,7 +1048,8 @@ export default function Chatbox() {
                     timestamp: new Date(),
                     products: streamingProducts,
                     cart: streamingCart,
-                    order: streamingOrder
+                    order: streamingOrder,
+                    orderSummary: streamingOrderSummary
                   });
                   assistantMessageIndexRef.current = updated.length - 1;
                 }
@@ -949,7 +1061,7 @@ export default function Chatbox() {
               streamingCart = parsedEvent.data.items;
               setMessages(prev => {
                 const updated = [...prev];
-                const index = ensureAssistantMessage(updated, streamingText, streamingProducts, streamingCart, streamingOrder);
+                const index = ensureAssistantMessage(updated, streamingText, streamingProducts, streamingCart, streamingOrder, streamingOrderSummary);
                 
                 if (index < updated.length && updated[index]) {
                   updated[index] = {
@@ -978,14 +1090,15 @@ export default function Chatbox() {
               streamingOrder = parsedEvent.data.order;
               setMessages(prev => {
                 const updated = [...prev];
-                const index = ensureAssistantMessage(updated, streamingText, streamingProducts, streamingCart, streamingOrder);
+                const index = ensureAssistantMessage(updated, streamingText, streamingProducts, streamingCart, streamingOrder, streamingOrderSummary);
                 
                 if (index < updated.length && updated[index]) {
                   updated[index] = {
                     ...updated[index],
                     order: streamingOrder,
                     products: streamingProducts,
-                    cart: streamingCart
+                    cart: streamingCart,
+                    orderSummary: streamingOrderSummary
                   };
                 } else {
                   updated.push({
@@ -995,7 +1108,8 @@ export default function Chatbox() {
                     timestamp: new Date(),
                     products: streamingProducts,
                     cart: streamingCart,
-                    order: streamingOrder
+                    order: streamingOrder,
+                    orderSummary: streamingOrderSummary
                   });
                   assistantMessageIndexRef.current = updated.length - 1;
                 }
@@ -1019,7 +1133,7 @@ export default function Chatbox() {
               setMessages(prev => {
                 const updated = [...prev];
                 const promptFinalText = typeof streamingText === 'string' ? streamingText : String(streamingText || '');
-                const index = ensureAssistantMessage(updated, promptFinalText, streamingProducts, streamingCart, streamingOrder);
+                const index = ensureAssistantMessage(updated, promptFinalText, streamingProducts, streamingCart, streamingOrder, streamingOrderSummary);
                 
                 if (index < updated.length && updated[index]) {
                   updated[index] = {
@@ -1059,13 +1173,14 @@ export default function Chatbox() {
       
     } catch (error) {
       console.error('Error in streaming:', error);
-      if (streamingText || streamingProducts || streamingCart || streamingOrder) {
+      if (streamingText || streamingProducts || streamingCart || streamingOrder || streamingOrderSummary) {
         addMessage(
           'assistant',
           streamingText || 'I received your message.',
           streamingProducts,
           streamingCart,
-          streamingOrder
+          streamingOrder,
+          streamingOrderSummary
         );
       } else {
       addMessage('assistant', 'Sorry, I encountered an error. Please try again.');
@@ -1196,6 +1311,13 @@ export default function Chatbox() {
                       onRemove={handleRemoveFromCart}
                       onPlaceOrder={handlePlaceOrder}
                     />
+                  </div>
+                )}
+                
+                {/* Render order summary if available */}
+                {msg.orderSummary && (
+                  <div className="w-full">
+                    <OrderSummaryDisplay orderSummary={msg.orderSummary} />
                   </div>
                 )}
                 
