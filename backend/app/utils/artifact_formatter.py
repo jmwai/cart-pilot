@@ -14,10 +14,10 @@ class ArtifactFormatter:
     @staticmethod
     def format_products(products_list: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         """Format products list for artifact.
-        
+
         Args:
             products_list: List of product dictionaries from session state
-            
+
         Returns:
             List of formatted product dictionaries
         """
@@ -45,10 +45,10 @@ class ArtifactFormatter:
     @staticmethod
     def format_cart(cart_state: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         """Format cart data for artifact.
-        
+
         Args:
             cart_state: Session state dictionary containing cart data
-            
+
         Returns:
             Formatted cart dictionary or None if cart is empty/invalid
         """
@@ -68,10 +68,10 @@ class ArtifactFormatter:
     @staticmethod
     def format_order_summary(summary_state: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         """Format order summary data for artifact.
-        
+
         Args:
             summary_state: Session state dictionary containing order summary data
-            
+
         Returns:
             Formatted order summary dictionary or None if summary is invalid
         """
@@ -89,10 +89,10 @@ class ArtifactFormatter:
     @staticmethod
     def format_order(order_state: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         """Format order data for artifact.
-        
+
         Args:
             order_state: Session state dictionary containing order data
-            
+
         Returns:
             Formatted order dictionary or None if order is invalid
         """
@@ -109,3 +109,45 @@ class ArtifactFormatter:
             "created_at": order_data.get("created_at", ""),
         }
 
+    @staticmethod
+    def format_payment_methods(payment_methods_state: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        """Format payment methods list for artifact.
+
+        Args:
+            payment_methods_state: Session state dictionary containing payment methods
+
+        Returns:
+            Formatted payment methods dictionary or None if payment methods are invalid
+        """
+        payment_methods = payment_methods_state.get(
+            "available_payment_methods")
+        if not payment_methods or not isinstance(payment_methods, list):
+            return None
+        return {
+            "type": "payment_methods",
+            "payment_methods": payment_methods,
+        }
+
+    @staticmethod
+    def format_payment_method_selection(selection_state: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        """Format selected payment method for artifact.
+
+        Args:
+            selection_state: Session state dictionary containing selected payment method
+
+        Returns:
+            Formatted payment method selection dictionary or None if selection is invalid
+        """
+        selected_payment_method = selection_state.get(
+            "selected_payment_method")
+        available_payment_methods = selection_state.get(
+            "available_payment_methods", [])
+
+        if not selected_payment_method or not isinstance(selected_payment_method, dict):
+            return None
+
+        return {
+            "type": "payment_method_selection",
+            "selected_payment_method_id": selected_payment_method.get("id", ""),
+            "payment_methods": available_payment_methods,
+        }

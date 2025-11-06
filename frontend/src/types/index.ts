@@ -96,6 +96,28 @@ export interface OrderSummaryData {
   item_count: number;
 }
 
+export interface PaymentMethod {
+  id: string;
+  type: string;
+  display_name: string;
+  last_four?: string;
+  expiry_month?: number;
+  expiry_year?: number;
+  cardholder_name?: string;
+  brand?: string;
+}
+
+export interface PaymentMethodData {
+  type: "payment_methods";
+  payment_methods: PaymentMethod[];
+}
+
+export interface PaymentMethodSelectionData {
+  type: "payment_method_selection";
+  payment_methods: PaymentMethod[];
+  selected_payment_method_id?: string;
+}
+
 // Chat Types
 export interface ChatMessage {
   id: string; // Unique message ID
@@ -107,6 +129,8 @@ export interface ChatMessage {
   cart?: CartItem[]; // Cart items displayed in this message
   order?: Order; // Order displayed in this message
   orderSummary?: OrderSummary; // Order summary displayed in this message
+  paymentMethods?: PaymentMethod[]; // Payment methods displayed in this message
+  selectedPaymentMethod?: PaymentMethod; // Selected payment method
 }
 
 // UI State Types

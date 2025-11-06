@@ -1,13 +1,14 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
-import { ChatMessage, Product, CartItem, Order, OrderSummary } from '@/types';
+import { ChatMessage, Product, CartItem, Order, OrderSummary, PaymentMethod } from '@/types';
 import { shoppingAPI } from '@/lib/shopping-api';
 import { parseA2AResponse, parseStreamingEvent } from '@/lib/a2a-parser';
 import ProductList from './ProductList';
 import CartDisplay from './CartDisplay';
 import OrderDisplay from './OrderDisplay';
 import OrderSummaryDisplay from './OrderSummaryDisplay';
+import PaymentMethodSelection from './PaymentMethodSelection';
 import { v4 as uuidv4 } from 'uuid';
 
 interface MessageWithArtifacts extends ChatMessage {
@@ -15,6 +16,8 @@ interface MessageWithArtifacts extends ChatMessage {
   cart?: CartItem[];
   order?: Order;
   orderSummary?: OrderSummary;
+  paymentMethods?: PaymentMethod[];
+  selectedPaymentMethod?: PaymentMethod;
 }
 
 export default function Chatbox() {
@@ -94,7 +97,9 @@ export default function Chatbox() {
     cart?: CartItem[],
     order?: Order,
     orderSummary?: OrderSummary,
-    imageUrl?: string
+    imageUrl?: string,
+    paymentMethods?: PaymentMethod[],
+    selectedPaymentMethod?: PaymentMethod
   ) => {
     setMessages(prev => [...prev, {
       id: uuidv4(),
@@ -105,7 +110,9 @@ export default function Chatbox() {
       cart,
       order,
       orderSummary,
-      imageUrl
+      imageUrl,
+      paymentMethods,
+      selectedPaymentMethod
     }]);
   };
 
@@ -117,7 +124,9 @@ export default function Chatbox() {
     products?: Product[],
     cart?: CartItem[],
     order?: Order,
-    orderSummary?: OrderSummary
+    orderSummary?: OrderSummary,
+    paymentMethods?: PaymentMethod[],
+    selectedPaymentMethod?: PaymentMethod
   ): number => {
     // Check if we already have an assistant message for this request
     if (assistantMessageIndexRef.current >= 0 && 
@@ -180,6 +189,8 @@ export default function Chatbox() {
     let streamingCart: CartItem[] | undefined = undefined;
     let streamingOrder: Order | undefined = undefined;
     let streamingOrderSummary: OrderSummary | undefined = undefined;
+    let streamingPaymentMethods: PaymentMethod[] | undefined = undefined;
+    let streamingSelectedPaymentMethod: PaymentMethod | undefined = undefined;
 
     // Helper function to safely extract status message
     const extractStatusMessage = (data: any): string => {
@@ -239,12 +250,12 @@ export default function Chatbox() {
         for await (const event of shoppingAPI.sendMessageStream(userMessage || undefined, imageToSend || undefined)) {
           clearTimeout(streamTimeout); // Clear timeout on successful event
           
-          const parsedEvent = parseStreamingEvent(event);
-          
-          if (!parsedEvent) continue;
-          
-          try {
-            switch (parsedEvent.type) {
+        const parsedEvent = parseStreamingEvent(event);
+        
+        if (!parsedEvent) continue;
+        
+        try {
+          switch (parsedEvent.type) {
             case 'text':
               // Accumulate text incrementally
               // Ensure text is a string
@@ -259,7 +270,7 @@ export default function Chatbox() {
               // Update or create assistant message in real-time using functional setState
               setMessages(prev => {
                 const updated = [...prev];
-                const index = ensureAssistantMessage(updated, safeText, streamingProducts, streamingCart, streamingOrder, streamingOrderSummary);
+                const index = ensureAssistantMessage(updated, safeText, streamingProducts, streamingCart, streamingOrder, streamingOrderSummary, streamingPaymentMethods, streamingSelectedPaymentMethod);
                 
                 if (index < updated.length && updated[index]) {
                   // Update existing message
@@ -269,7 +280,9 @@ export default function Chatbox() {
                     products: streamingProducts,
                     cart: streamingCart,
                     order: streamingOrder,
-                    orderSummary: streamingOrderSummary
+                    orderSummary: streamingOrderSummary,
+                    paymentMethods: streamingPaymentMethods,
+                    selectedPaymentMethod: streamingSelectedPaymentMethod
                   };
                 } else {
                   // Create new message (shouldn't happen due to ensureAssistantMessage, but safety check)
@@ -281,7 +294,9 @@ export default function Chatbox() {
                     products: streamingProducts,
                     cart: streamingCart,
                     order: streamingOrder,
-                    orderSummary: streamingOrderSummary
+                    orderSummary: streamingOrderSummary,
+                    paymentMethods: streamingPaymentMethods,
+                    selectedPaymentMethod: streamingSelectedPaymentMethod
                   });
                   assistantMessageIndexRef.current = updated.length - 1;
                 }
@@ -295,7 +310,7 @@ export default function Chatbox() {
               
               setMessages(prev => {
                 const updated = [...prev];
-                const index = ensureAssistantMessage(updated, streamingText, streamingProducts, streamingCart, streamingOrder, streamingOrderSummary);
+                const index = ensureAssistantMessage(updated, streamingText, streamingProducts, streamingCart, streamingOrder, streamingOrderSummary, streamingPaymentMethods, streamingSelectedPaymentMethod);
                 
                 if (index < updated.length && updated[index]) {
                   updated[index] = {
@@ -303,7 +318,9 @@ export default function Chatbox() {
                     orderSummary: streamingOrderSummary,
                     products: streamingProducts,
                     cart: streamingCart,
-                    order: streamingOrder
+                    order: streamingOrder,
+                    paymentMethods: streamingPaymentMethods,
+                    selectedPaymentMethod: streamingSelectedPaymentMethod
                   };
                 } else {
                   updated.push({
@@ -314,7 +331,84 @@ export default function Chatbox() {
                     products: streamingProducts,
                     cart: streamingCart,
                     order: streamingOrder,
+                    orderSummary: streamingOrderSummary,
+                    paymentMethods: streamingPaymentMethods,
+                    selectedPaymentMethod: streamingSelectedPaymentMethod
+                  });
+                  assistantMessageIndexRef.current = updated.length - 1;
+                }
+                return updated;
+              });
+              break;
+              
+            case 'payment_methods':
+              // Update payment methods immediately
+              streamingPaymentMethods = parsedEvent.data.paymentMethods;
+              
+              setMessages(prev => {
+                const updated = [...prev];
+                const index = ensureAssistantMessage(updated, streamingText, streamingProducts, streamingCart, streamingOrder, streamingOrderSummary, streamingPaymentMethods, streamingSelectedPaymentMethod);
+                
+                if (index < updated.length && updated[index]) {
+                  updated[index] = {
+                    ...updated[index],
+                    paymentMethods: streamingPaymentMethods,
+                    selectedPaymentMethod: streamingSelectedPaymentMethod,
+                    products: streamingProducts,
+                    cart: streamingCart,
+                    order: streamingOrder,
                     orderSummary: streamingOrderSummary
+                  };
+                } else {
+                  updated.push({
+                    id: uuidv4(),
+                    role: 'assistant',
+                    content: streamingText,
+                    timestamp: new Date(),
+                    products: streamingProducts,
+                    cart: streamingCart,
+                    order: streamingOrder,
+                    orderSummary: streamingOrderSummary,
+                    paymentMethods: streamingPaymentMethods,
+                    selectedPaymentMethod: streamingSelectedPaymentMethod
+                  });
+                  assistantMessageIndexRef.current = updated.length - 1;
+                }
+                return updated;
+              });
+              break;
+              
+            case 'payment_method_selection':
+              // Update selected payment method
+              streamingPaymentMethods = parsedEvent.data.paymentMethods;
+              streamingSelectedPaymentMethod = parsedEvent.data.selectedPaymentMethod;
+              
+              setMessages(prev => {
+                const updated = [...prev];
+                const index = ensureAssistantMessage(updated, streamingText, streamingProducts, streamingCart, streamingOrder, streamingOrderSummary, streamingPaymentMethods, streamingSelectedPaymentMethod);
+                
+                if (index < updated.length && updated[index]) {
+                  updated[index] = {
+                    ...updated[index],
+                    paymentMethods: streamingPaymentMethods,
+                    selectedPaymentMethod: streamingSelectedPaymentMethod,
+                    products: streamingProducts,
+                    cart: streamingCart,
+                    order: streamingOrder,
+                    orderSummary: streamingOrderSummary
+                  };
+                } else {
+                  updated.push({
+                    id: uuidv4(),
+                    role: 'assistant',
+                    content: streamingText,
+                    timestamp: new Date(),
+                    products: streamingProducts,
+                    cart: streamingCart,
+                    order: streamingOrder,
+                    orderSummary: streamingOrderSummary,
+                    paymentMethods: streamingPaymentMethods,
+                    selectedPaymentMethod: streamingSelectedPaymentMethod
                   });
                   assistantMessageIndexRef.current = updated.length - 1;
                 }
@@ -328,7 +422,7 @@ export default function Chatbox() {
               
               setMessages(prev => {
                 const updated = [...prev];
-                const index = ensureAssistantMessage(updated, streamingText, streamingProducts, streamingCart, streamingOrder, streamingOrderSummary);
+                const index = ensureAssistantMessage(updated, streamingText, streamingProducts, streamingCart, streamingOrder, streamingOrderSummary, streamingPaymentMethods, streamingSelectedPaymentMethod);
                 
                 if (index < updated.length && updated[index]) {
                   updated[index] = {
@@ -336,7 +430,9 @@ export default function Chatbox() {
                     products: streamingProducts,
                     cart: streamingCart,
                     order: streamingOrder,
-                    orderSummary: streamingOrderSummary
+                    orderSummary: streamingOrderSummary,
+                    paymentMethods: streamingPaymentMethods,
+                    selectedPaymentMethod: streamingSelectedPaymentMethod
                   };
                 } else {
                   updated.push({
@@ -347,7 +443,9 @@ export default function Chatbox() {
                     products: streamingProducts,
                     cart: streamingCart,
                     order: streamingOrder,
-                    orderSummary: streamingOrderSummary
+                    orderSummary: streamingOrderSummary,
+                    paymentMethods: streamingPaymentMethods,
+                    selectedPaymentMethod: streamingSelectedPaymentMethod
                   });
                   assistantMessageIndexRef.current = updated.length - 1;
                 }
@@ -361,7 +459,7 @@ export default function Chatbox() {
               
               setMessages(prev => {
                 const updated = [...prev];
-                const index = ensureAssistantMessage(updated, streamingText, streamingProducts, streamingCart, streamingOrder, streamingOrderSummary);
+                const index = ensureAssistantMessage(updated, streamingText, streamingProducts, streamingCart, streamingOrder, streamingOrderSummary, streamingPaymentMethods, streamingSelectedPaymentMethod);
                 
                 if (index < updated.length && updated[index]) {
                   updated[index] = {
@@ -392,7 +490,7 @@ export default function Chatbox() {
               
               setMessages(prev => {
                 const updated = [...prev];
-                const index = ensureAssistantMessage(updated, streamingText, streamingProducts, streamingCart, streamingOrder, streamingOrderSummary);
+                const index = ensureAssistantMessage(updated, streamingText, streamingProducts, streamingCart, streamingOrder, streamingOrderSummary, streamingPaymentMethods, streamingSelectedPaymentMethod);
                 
                 if (index < updated.length && updated[index]) {
                   updated[index] = {
@@ -400,7 +498,9 @@ export default function Chatbox() {
                     order: streamingOrder,
                     products: streamingProducts,
                     cart: streamingCart,
-                    orderSummary: streamingOrderSummary
+                    orderSummary: streamingOrderSummary,
+                    paymentMethods: streamingPaymentMethods,
+                    selectedPaymentMethod: streamingSelectedPaymentMethod
                   };
                 } else {
                   updated.push({
@@ -436,7 +536,7 @@ export default function Chatbox() {
               setMessages(prev => {
                 const updated = [...prev];
                 const finalText = typeof streamingText === 'string' ? streamingText : String(streamingText || '');
-                const index = ensureAssistantMessage(updated, finalText, streamingProducts, streamingCart, streamingOrder, streamingOrderSummary);
+                const index = ensureAssistantMessage(updated, finalText, streamingProducts, streamingCart, streamingOrder, streamingOrderSummary, streamingPaymentMethods, streamingSelectedPaymentMethod);
                 
                 if (index < updated.length && updated[index]) {
                   updated[index] = {
@@ -445,7 +545,9 @@ export default function Chatbox() {
                     products: streamingProducts,
                     cart: streamingCart,
                     order: streamingOrder,
-                    orderSummary: streamingOrderSummary
+                    orderSummary: streamingOrderSummary,
+                    paymentMethods: streamingPaymentMethods,
+                    selectedPaymentMethod: streamingSelectedPaymentMethod
                   };
                 } else {
                   updated.push({
@@ -456,7 +558,9 @@ export default function Chatbox() {
                     products: streamingProducts,
                     cart: streamingCart,
                     order: streamingOrder,
-                    orderSummary: streamingOrderSummary
+                    orderSummary: streamingOrderSummary,
+                    paymentMethods: streamingPaymentMethods,
+                    selectedPaymentMethod: streamingSelectedPaymentMethod
                   });
                   assistantMessageIndexRef.current = updated.length - 1;
                 }
@@ -465,41 +569,44 @@ export default function Chatbox() {
               // Reset index after completion
               assistantMessageIndexRef.current = -1;
               break;
-            }
-          } catch (eventError) {
-            // Handle individual event processing errors
-            console.error('Error processing streaming event:', eventError);
-            // Continue processing other events
           }
+        } catch (eventError) {
+          // Handle individual event processing errors
+          console.error('Error processing streaming event:', eventError);
+          // Continue processing other events
         }
+      }
         
         // Clear timeout when stream completes normally
         clearTimeout(streamTimeout);
-        
-        // Ensure loading is stopped even if no complete event received
-        setIsLoading(false);
-        // Reset index after stream completes
-        assistantMessageIndexRef.current = -1;
+      
+      // Ensure loading is stopped even if no complete event received
+      setIsLoading(false);
+      // Reset index after stream completes
+      assistantMessageIndexRef.current = -1;
       } catch (streamError) {
         // Handle stream errors
         console.error('Error in stream:', streamError);
         clearTimeout(streamTimeout);
         setIsLoading(false);
-        assistantMessageIndexRef.current = -1;
-        
-        // Save partial results if available
-        if (streamingText || streamingProducts || streamingCart || streamingOrder || streamingOrderSummary) {
-          addMessage(
-            'assistant',
-            streamingText || 'I received your message.',
-            streamingProducts,
-            streamingCart,
+      assistantMessageIndexRef.current = -1;
+      
+      // Save partial results if available
+        if (streamingText || streamingProducts || streamingCart || streamingOrder || streamingOrderSummary || streamingPaymentMethods) {
+        addMessage(
+          'assistant',
+          streamingText || 'I received your message.',
+          streamingProducts,
+          streamingCart,
             streamingOrder,
-            streamingOrderSummary
-          );
-        } else {
-          addMessage('assistant', 'Sorry, I encountered an error. Please try again.');
-        }
+            streamingOrderSummary,
+            undefined,
+            streamingPaymentMethods,
+            streamingSelectedPaymentMethod
+        );
+      } else {
+        addMessage('assistant', 'Sorry, I encountered an error. Please try again.');
+      }
       }
     } catch (error) {
       console.error('Error in streaming:', error);
@@ -572,6 +679,8 @@ export default function Chatbox() {
     let streamingCart: CartItem[] | undefined = undefined;
     let streamingOrder: Order | undefined = undefined;
     let streamingOrderSummary: OrderSummary | undefined = undefined;
+    let streamingPaymentMethods: PaymentMethod[] | undefined = undefined;
+    let streamingSelectedPaymentMethod: PaymentMethod | undefined = undefined;
 
     // Helper function to safely extract status message
     const extractStatusMessage = (data: any): string => {
@@ -663,7 +772,7 @@ export default function Chatbox() {
                 
                 setMessages(prev => {
                   const updated = [...prev];
-                  const index = ensureAssistantMessage(updated, streamingText, streamingProducts, streamingCart, streamingOrder, streamingOrderSummary);
+                  const index = ensureAssistantMessage(updated, streamingText, streamingProducts, streamingCart, streamingOrder, streamingOrderSummary, streamingPaymentMethods, streamingSelectedPaymentMethod);
                   
                   if (index < updated.length && updated[index]) {
                     updated[index] = {
@@ -695,15 +804,17 @@ export default function Chatbox() {
                 
                 setMessages(prev => {
                   const updated = [...prev];
-                  const index = ensureAssistantMessage(updated, streamingText, streamingProducts, streamingCart, streamingOrder, streamingOrderSummary);
+                  const index = ensureAssistantMessage(updated, streamingText, streamingProducts, streamingCart, streamingOrder, streamingOrderSummary, streamingPaymentMethods, streamingSelectedPaymentMethod);
                   
                   if (index < updated.length && updated[index]) {
                     updated[index] = {
                       ...updated[index],
                       cart: streamingCart,
                       products: streamingProducts,
-                      order: streamingOrder,
-                      orderSummary: streamingOrderSummary
+                    order: streamingOrder,
+                    orderSummary: streamingOrderSummary,
+                    paymentMethods: streamingPaymentMethods,
+                    selectedPaymentMethod: streamingSelectedPaymentMethod
                     };
                   } else {
                     updated.push({
@@ -711,11 +822,13 @@ export default function Chatbox() {
                       role: 'assistant',
                       content: streamingText,
                       timestamp: new Date(),
-                      products: streamingProducts,
-                      cart: streamingCart,
-                      order: streamingOrder,
-                      orderSummary: streamingOrderSummary
-                    });
+                    products: streamingProducts,
+                    cart: streamingCart,
+                    order: streamingOrder,
+                    orderSummary: streamingOrderSummary,
+                    paymentMethods: streamingPaymentMethods,
+                    selectedPaymentMethod: streamingSelectedPaymentMethod
+                  });
                     assistantMessageIndexRef.current = updated.length - 1;
                   }
                   return updated;
@@ -727,7 +840,7 @@ export default function Chatbox() {
                 
                 setMessages(prev => {
                   const updated = [...prev];
-                  const index = ensureAssistantMessage(updated, streamingText, streamingProducts, streamingCart, streamingOrder, streamingOrderSummary);
+                  const index = ensureAssistantMessage(updated, streamingText, streamingProducts, streamingCart, streamingOrder, streamingOrderSummary, streamingPaymentMethods, streamingSelectedPaymentMethod);
                   
                   if (index < updated.length && updated[index]) {
                     updated[index] = {
@@ -759,7 +872,7 @@ export default function Chatbox() {
                 
                 setMessages(prev => {
                   const updated = [...prev];
-                  const index = ensureAssistantMessage(updated, streamingText, streamingProducts, streamingCart, streamingOrder, streamingOrderSummary);
+                  const index = ensureAssistantMessage(updated, streamingText, streamingProducts, streamingCart, streamingOrder, streamingOrderSummary, streamingPaymentMethods, streamingSelectedPaymentMethod);
                   
                   if (index < updated.length && updated[index]) {
                     updated[index] = {
@@ -933,6 +1046,8 @@ export default function Chatbox() {
     let streamingCart: CartItem[] | undefined = undefined;
     let streamingOrder: Order | undefined = undefined;
     let streamingOrderSummary: OrderSummary | undefined = undefined;
+    let streamingPaymentMethods: PaymentMethod[] | undefined = undefined;
+    let streamingSelectedPaymentMethod: PaymentMethod | undefined = undefined;
 
     // Helper function to safely extract status message
     const extractStatusMessage = (data: any): string => {
@@ -1030,7 +1145,7 @@ export default function Chatbox() {
               streamingProducts = parsedEvent.data.products;
               setMessages(prev => {
                 const updated = [...prev];
-                const index = ensureAssistantMessage(updated, streamingText, streamingProducts, streamingCart, streamingOrder, streamingOrderSummary);
+                const index = ensureAssistantMessage(updated, streamingText, streamingProducts, streamingCart, streamingOrder, streamingOrderSummary, streamingPaymentMethods, streamingSelectedPaymentMethod);
                 
                 if (index < updated.length && updated[index]) {
                   updated[index] = {
@@ -1038,7 +1153,9 @@ export default function Chatbox() {
                     products: streamingProducts,
                     cart: streamingCart,
                     order: streamingOrder,
-                    orderSummary: streamingOrderSummary
+                    orderSummary: streamingOrderSummary,
+                    paymentMethods: streamingPaymentMethods,
+                    selectedPaymentMethod: streamingSelectedPaymentMethod
                   };
                 } else {
                   updated.push({
@@ -1049,7 +1166,9 @@ export default function Chatbox() {
                     products: streamingProducts,
                     cart: streamingCart,
                     order: streamingOrder,
-                    orderSummary: streamingOrderSummary
+                    orderSummary: streamingOrderSummary,
+                    paymentMethods: streamingPaymentMethods,
+                    selectedPaymentMethod: streamingSelectedPaymentMethod
                   });
                   assistantMessageIndexRef.current = updated.length - 1;
                 }
@@ -1061,7 +1180,7 @@ export default function Chatbox() {
               streamingCart = parsedEvent.data.items;
               setMessages(prev => {
                 const updated = [...prev];
-                const index = ensureAssistantMessage(updated, streamingText, streamingProducts, streamingCart, streamingOrder, streamingOrderSummary);
+                const index = ensureAssistantMessage(updated, streamingText, streamingProducts, streamingCart, streamingOrder, streamingOrderSummary, streamingPaymentMethods, streamingSelectedPaymentMethod);
                 
                 if (index < updated.length && updated[index]) {
                   updated[index] = {
@@ -1090,7 +1209,7 @@ export default function Chatbox() {
               streamingOrder = parsedEvent.data.order;
               setMessages(prev => {
                 const updated = [...prev];
-                const index = ensureAssistantMessage(updated, streamingText, streamingProducts, streamingCart, streamingOrder, streamingOrderSummary);
+                const index = ensureAssistantMessage(updated, streamingText, streamingProducts, streamingCart, streamingOrder, streamingOrderSummary, streamingPaymentMethods, streamingSelectedPaymentMethod);
                 
                 if (index < updated.length && updated[index]) {
                   updated[index] = {
@@ -1098,7 +1217,9 @@ export default function Chatbox() {
                     order: streamingOrder,
                     products: streamingProducts,
                     cart: streamingCart,
-                    orderSummary: streamingOrderSummary
+                    orderSummary: streamingOrderSummary,
+                    paymentMethods: streamingPaymentMethods,
+                    selectedPaymentMethod: streamingSelectedPaymentMethod
                   };
                 } else {
                   updated.push({
@@ -1318,6 +1439,44 @@ export default function Chatbox() {
                 {msg.orderSummary && (
                   <div className="w-full">
                     <OrderSummaryDisplay orderSummary={msg.orderSummary} />
+                  </div>
+                )}
+                
+                {/* Render payment methods if available */}
+                {msg.paymentMethods && msg.paymentMethods.length > 0 && (
+                  <div className="w-full">
+                    <PaymentMethodSelection
+                      paymentMethods={msg.paymentMethods}
+                      selectedPaymentMethodId={msg.selectedPaymentMethod?.id}
+                      onSelect={async (paymentMethodId) => {
+                        // Send message to agent to select payment method
+                        if (isLoading || !isInitialized) return;
+                        
+                        const userMessage = `Select payment method ${paymentMethodId}`;
+                        
+                        // Add user message
+                        addMessage('user', userMessage);
+                        
+                        setIsLoading(true);
+                        setLoadingMessage('Processing payment method selection...');
+                        
+                        try {
+                          for await (const event of shoppingAPI.sendMessageStream(userMessage)) {
+                            const parsedEvent = parseStreamingEvent(event);
+                            if (!parsedEvent) continue;
+                            
+                            if (parsedEvent.type === 'complete') {
+                              setIsLoading(false);
+                              break;
+                            }
+                            // Handle other event types similarly to main handleSend
+                          }
+                        } catch (error) {
+                          console.error('Error selecting payment method:', error);
+                          setIsLoading(false);
+                        }
+                      }}
+                    />
                   </div>
                 )}
                 

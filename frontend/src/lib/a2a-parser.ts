@@ -1,10 +1,10 @@
-import { Product, ProductListData, CartItem, CartData, Order, OrderData, OrderItem, OrderSummary, OrderSummaryData } from '@/types';
+import { Product, ProductListData, CartItem, CartData, Order, OrderData, OrderItem, OrderSummary, OrderSummaryData, PaymentMethod, PaymentMethodData, PaymentMethodSelectionData } from '@/types';
 
 /**
  * Streaming event from A2A protocol
  */
 export interface StreamingEvent {
-  type: 'text' | 'products' | 'cart' | 'order' | 'order_summary' | 'status' | 'complete';
+  type: 'text' | 'products' | 'cart' | 'order' | 'order_summary' | 'payment_methods' | 'payment_method_selection' | 'status' | 'complete';
   data: any;
   isIncremental: boolean;
 }
@@ -384,6 +384,46 @@ export function parseStreamingEvent(event: any): StreamingEvent | null {
           }
         } catch (error) {
           console.error('Error parsing order summary data:', error);
+        }
+      }
+      
+      // Payment methods artifact
+      if (part.kind === 'data' && artifact.name === 'payment_methods') {
+        try {
+          const data = part.data as PaymentMethodData;
+          if (data?.type === 'payment_methods' && Array.isArray(data.payment_methods)) {
+            return {
+              type: 'payment_methods',
+              data: { 
+                paymentMethods: data.payment_methods
+              },
+              isIncremental: artifact.incremental !== false
+            };
+          }
+        } catch (error) {
+          console.error('Error parsing payment methods data:', error);
+        }
+      }
+      
+      // Payment method selection artifact
+      if (part.kind === 'data' && artifact.name === 'payment_method_selection') {
+        try {
+          const data = part.data as PaymentMethodSelectionData;
+          if (data?.type === 'payment_method_selection') {
+            const selectedMethod = data.payment_methods?.find(
+              pm => pm.id === data.selected_payment_method_id
+            );
+            return {
+              type: 'payment_method_selection',
+              data: { 
+                paymentMethods: data.payment_methods || [],
+                selectedPaymentMethod: selectedMethod
+              },
+              isIncremental: artifact.incremental !== false
+            };
+          }
+        } catch (error) {
+          console.error('Error parsing payment method selection data:', error);
         }
       }
     }

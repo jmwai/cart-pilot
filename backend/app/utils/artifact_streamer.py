@@ -41,7 +41,9 @@ class ArtifactStreamer:
             "products": False,
             "cart": False,
             "order": False,
-            "order_summary": False
+            "order_summary": False,
+            "payment_methods": False,
+            "payment_method_selection": False
         }
 
     async def stream_if_changed(
@@ -133,6 +135,38 @@ class ArtifactStreamer:
                             self.sent_flags["order"] = True
                             return True
 
+            elif artifact_type == "payment_methods":
+                if ("available_payment_methods" in session_state and
+                        self.tracker.has_payment_methods_changed(session_state)):
+                    payment_methods_artifact_data = self.formatter.format_payment_methods(
+                        session_state)
+                    if payment_methods_artifact_data:
+                        await self.updater.add_artifact(
+                            [Part(root=DataPart(
+                                data=payment_methods_artifact_data,
+                                mimeType="application/json"
+                            ))],
+                            name="payment_methods"
+                        )
+                        self.sent_flags["payment_methods"] = True
+                        return True
+
+            elif artifact_type == "payment_method_selection":
+                if ("selected_payment_method" in session_state and
+                        self.tracker.has_payment_method_selection_changed(session_state)):
+                    selection_artifact_data = self.formatter.format_payment_method_selection(
+                        session_state)
+                    if selection_artifact_data:
+                        await self.updater.add_artifact(
+                            [Part(root=DataPart(
+                                data=selection_artifact_data,
+                                mimeType="application/json"
+                            ))],
+                            name="payment_method_selection"
+                        )
+                        self.sent_flags["payment_method_selection"] = True
+                        return True
+
         except Exception as e:
             logger.error(f"Error streaming {artifact_type} artifact: {e}")
             return False
@@ -150,3 +184,5 @@ class ArtifactStreamer:
         await self.stream_if_changed("cart", session_state)
         await self.stream_if_changed("order_summary", session_state)
         await self.stream_if_changed("order", session_state)
+        await self.stream_if_changed("payment_methods", session_state)
+        await self.stream_if_changed("payment_method_selection", session_state)

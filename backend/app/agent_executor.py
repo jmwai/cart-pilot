@@ -233,6 +233,8 @@ class ShoppingAgentExecutor(AgentExecutor):
                         # Stream any remaining artifacts
                         await streamer.stream_if_changed("order_summary", session_state)
                         await streamer.stream_if_changed("order", session_state)
+                        await streamer.stream_if_changed("payment_methods", session_state)
+                        await streamer.stream_if_changed("payment_method_selection", session_state)
                     except Exception as final_state_error:
                         logger.error(
                             f"Error processing final response state: {final_state_error}")
@@ -254,6 +256,8 @@ class ShoppingAgentExecutor(AgentExecutor):
                         await streamer.stream_if_changed("cart", session_state)
                         await streamer.stream_if_changed("order_summary", session_state)
                         await streamer.stream_if_changed("order", session_state)
+                        await streamer.stream_if_changed("payment_methods", session_state)
+                        await streamer.stream_if_changed("payment_method_selection", session_state)
                     except Exception as state_error:
                         # Don't fail the entire request if state check fails
                         # Log error but continue processing
