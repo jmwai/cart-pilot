@@ -27,6 +27,35 @@ from app.shopping_agent import root_agent as shopping_agent
 
 logger = logging.getLogger(__name__)
 
+# Tool name -> Status message mapping for dynamic status updates
+# Maps function names to user-friendly status messages sent via A2A TaskStatusUpdateEvent
+TOOL_STATUS_MESSAGES = {
+    # Product Discovery
+    'text_vector_search': 'Searching for products...',
+    'image_vector_search': 'Finding visually similar products...',
+
+    # Cart Operations
+    'add_to_cart': 'Adding item to cart...',
+    'get_cart': 'Loading your cart...',
+    'update_cart_item': 'Updating cart...',
+    'remove_from_cart': 'Removing item from cart...',
+    'clear_cart': 'Clearing cart...',
+    'get_cart_total': 'Calculating cart total...',
+
+    # Checkout
+    'create_order': 'Processing your order...',
+    'get_order_status': 'Checking order status...',
+    'cancel_order': 'Canceling order...',
+    'validate_cart_for_checkout': 'Validating cart...',
+
+    # Customer Service
+    'create_inquiry': 'Creating your inquiry...',
+    'get_inquiry_status': 'Checking inquiry status...',
+    'search_faq': 'Searching FAQ...',
+    'initiate_return': 'Initiating return...',
+    'get_order_inquiries': 'Retrieving order inquiries...',
+}
+
 
 class ShoppingAgentExecutor(AgentExecutor):
     """Executor that bridges A2A protocol to ADK agents."""
@@ -626,6 +655,7 @@ class ShoppingAgentExecutor(AgentExecutor):
 
             # Process with ADK agent - stream events as they arrive
             # ADK Runner automatically persists state changes made through tool_context.state
+            last_function_name = None  # Track last function to avoid duplicate status updates
             async for event in self.runner.run_async(
                 user_id=user_id, session_id=session_id, new_message=content
             ):
@@ -641,8 +671,45 @@ class ShoppingAgentExecutor(AgentExecutor):
                                 name=self.artifact_name,
                             )
                         elif hasattr(part, 'function_call'):
-                            # Function calls are handled internally by ADK
-                            pass
+                            # Extract function name and update status message via A2A TaskStatusUpdateEvent
+                            function_call = part.function_call
+                            function_name = None
+
+                            # Try multiple ways to extract function name (defensive programming)
+                            if hasattr(function_call, 'name'):
+                                function_name = function_call.name
+                            elif hasattr(function_call, 'function_name'):
+                                function_name = function_call.function_name
+                            elif isinstance(function_call, dict):
+                                function_name = function_call.get(
+                                    'name') or function_call.get('function_name')
+
+                            # Update status message if function name found and different from last
+                            if function_name and function_name != last_function_name:
+                                if function_name in TOOL_STATUS_MESSAGES:
+                                    status_message = TOOL_STATUS_MESSAGES[function_name]
+                                    logger.info(
+                                        f"Updating status for function call: {function_name} -> {status_message}")
+                                    # Send TaskStatusUpdateEvent via A2A streaming protocol
+                                    await updater.update_status(
+                                        TaskState.working,  # A2A TaskState enum value
+                                        new_agent_text_message(  # Creates A2A Message with TextPart
+                                            status_message, task.context_id, task.id
+                                        ),
+                                    )
+                                    last_function_name = function_name
+                                else:
+                                    # Log unknown function for future addition to mapping
+                                    logger.debug(
+                                        f"Function '{function_name}' not in TOOL_STATUS_MESSAGES mapping")
+                                    # Optionally update with generic message for unknown functions
+                                    # Uncomment below if desired:
+                                    # await updater.update_status(
+                                    #     TaskState.working,
+                                    #     new_agent_text_message(
+                                    #         self.status_message, task.context_id, task.id
+                                    #     ),
+                                    # )
 
                 # Check for state updates (products, cart) periodically
                 # Check state after every event, but only send if available and not already sent
