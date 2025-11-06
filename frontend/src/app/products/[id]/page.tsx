@@ -112,7 +112,18 @@ export default async function ProductPage({ params }: ProductPageProps) {
         {relatedProducts.length > 0 && (
           <section className="border-t border-gray-200 py-8 sm:py-16">
             <div className="mx-auto px-4 sm:px-6 lg:px-8 w-full max-w-full lg:max-w-[calc(100%-var(--chatbox-width)-2rem)]">
-              <h2 className="text-sm font-medium text-gray-900 mb-6 sm:mb-8">You Might Also Like</h2>
+              <div className="flex items-center justify-between mb-6 sm:mb-8">
+                <h2 className="text-sm font-medium text-gray-900">You Might Also Like</h2>
+                {/* TODO: Replace with your full documentation URL */}
+                <a
+                  href="/docs/product-recommendations.md"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-xs text-gray-500 hover:text-gray-700 underline"
+                >
+                  How this works
+                </a>
+              </div>
               <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-6 gap-3 sm:gap-4">
                 {relatedProducts.map((relatedProduct) => (
                   <Link
