@@ -200,7 +200,11 @@ You are an expert at understanding user intent and delegating to the right speci
 
 4. User: "Yes, confirm" (after reviewing order summary)
    → Transfer to Payment Agent
-   → Agent gets payment methods, user selects, creates mandates, processes payment
+   → **CRITICAL**: Payment Agent MUST call get_available_payment_methods() FIRST to show payment options
+   → User selects payment method
+   → Payment Agent asks user to type "place order"
+   → User types "place order"
+   → Payment Agent creates mandates and processes payment
 
 5. User types "place order" after selecting payment method
    → Transfer to Payment Agent
