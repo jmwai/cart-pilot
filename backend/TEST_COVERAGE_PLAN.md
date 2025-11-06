@@ -54,7 +54,11 @@
 | artifact_formatter.py | ~154 | 100% | +154 lines |
 | state_tracker.py | ~111 | 100% | +111 lines |
 | config.py | ~34 | 100% | +34 lines |
-| **Subtotal** | **~299** | **100%** | **+299 lines** |
+| status_message_handler.py | ~33 | 100% | +33 lines |
+| artifact_streamer.py | ~74 | 100% | +74 lines |
+| content_builder.py | ~50 | 100% | +50 lines |
+| constants.py | ~1 | 100% | +1 lines |
+| **Subtotal** | **~457** | **100%** | **+457 lines** |
 
 **New Total**: ~1286/1608 = **80% coverage** ✅
 
@@ -62,7 +66,7 @@
 
 1. Run tests to verify they pass:
    ```bash
-   pytest tests/unit/test_artifact_formatter.py tests/unit/test_state_tracker.py tests/unit/test_config.py -v
+   pytest tests/unit/test_artifact_formatter.py tests/unit/test_state_tracker.py tests/unit/test_config.py tests/unit/test_status_message_handler.py tests/unit/test_artifact_streamer.py tests/unit/test_content_builder.py tests/unit/test_constants.py -v
    ```
 
 2. Check coverage report:
@@ -70,7 +74,9 @@
    pytest --cov=app --cov-report=html
    ```
 
-3. If coverage still below 50%, proceed with Phase 2 tests
+3. If coverage still below 50%, proceed with Phase 2 tests:
+   - `test_message_parser.py` - Mock A2A RequestContext, test parsing logic
+   - `test_session_manager.py` - Mock Runner and session_service, test session management
 
 4. Consider adding integration tests for agent_executor.py (most complex but highest impact)
 
