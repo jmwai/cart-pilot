@@ -135,7 +135,7 @@ async def get_similar_products_by_image(request: Request) -> JSONResponse:
     Uses image vector search to find visually similar products by:
     1. Fetching the product by ID
     2. Downloading the product's image
-    3. Creating an image embedding
+    3. Creating an image embedding using Vertex AI Embeddings
     4. Finding products with similar embeddings using pgvector
 
     Returns:
