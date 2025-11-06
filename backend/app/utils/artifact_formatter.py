@@ -76,7 +76,7 @@ class ArtifactFormatter:
             Formatted order summary dictionary or None if summary is invalid
         """
         summary_data = summary_state.get("pending_order_summary")
-        if not summary_data or summary_data is None or not isinstance(summary_data, dict):
+        if summary_data is None or not isinstance(summary_data, dict):
             return None
         return {
             "type": "order_summary",

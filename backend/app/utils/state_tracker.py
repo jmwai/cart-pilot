@@ -38,7 +38,9 @@ class StateTracker:
             True if products changed, False otherwise
         """
         current_results = current_state.get("current_results", [])
-        return current_results and current_results != self.initial_products
+        if not current_results:
+            return False
+        return current_results != self.initial_products
 
     def has_cart_changed(self, current_state: Dict[str, Any]) -> bool:
         """Check if cart changed.
@@ -95,7 +97,9 @@ class StateTracker:
         """
         current_payment_methods = current_state.get(
             "available_payment_methods", [])
-        return current_payment_methods and current_payment_methods != self.initial_payment_methods
+        if not current_payment_methods:
+            return False
+        return current_payment_methods != self.initial_payment_methods
 
     def has_payment_method_selection_changed(self, current_state: Dict[str, Any]) -> bool:
         """Check if payment method selection changed.
@@ -107,4 +111,6 @@ class StateTracker:
             True if payment method selection changed, False otherwise
         """
         current_selected = current_state.get("selected_payment_method")
-        return current_selected and current_selected != self.initial_selected_payment_method
+        if not current_selected:
+            return False
+        return current_selected != self.initial_selected_payment_method

@@ -13,15 +13,33 @@ class TestSettings:
 
     def test_settings_required_fields(self):
         """Test that required fields are enforced"""
-        with pytest.raises(Exception):  # Pydantic validation error
-            Settings()
+        # Clear any existing environment variables
+        import os
+        env_backup = {}
+        for key in ['PROJECT_ID', 'GOOGLE_API_KEY']:
+            if key in os.environ:
+                env_backup[key] = os.environ[key]
+                del os.environ[key]
+
+        try:
+            # Clear cache to force reload
+            get_settings.cache_clear()
+            # Pydantic Settings will raise ValidationError if required fields are missing
+            with pytest.raises(Exception):  # ValidationError or similar
+                Settings()
+        finally:
+            # Restore environment
+            for key, value in env_backup.items():
+                os.environ[key] = value
+            get_settings.cache_clear()
 
     @patch.dict(os.environ, {
         'PROJECT_ID': 'test-project',
         'GOOGLE_API_KEY': 'test-key'
-    })
+    }, clear=True)
     def test_settings_from_env(self):
         """Test loading settings from environment variables"""
+        get_settings.cache_clear()
         settings = Settings()
         assert settings.PROJECT_ID == 'test-project'
         assert settings.GOOGLE_API_KEY == 'test-key'
