@@ -29,13 +29,13 @@ class MessageParser:
 
     # Valid image MIME types
     VALID_IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/webp']
-    
+
     # Maximum image size (10MB)
     MAX_IMAGE_SIZE = 10 * 1024 * 1024
 
     def __init__(self, debug: bool = False):
         """Initialize message parser.
-        
+
         Args:
             debug: Enable debug logging (default: False)
         """
@@ -43,13 +43,13 @@ class MessageParser:
 
     def parse(self, context: RequestContext) -> ParsedMessage:
         """Extract text and image from A2A message.
-        
+
         Args:
             context: A2A request context containing the message
-            
+
         Returns:
             ParsedMessage containing text_query, image_bytes, and image_mime_type
-            
+
         Raises:
             ValueError: If image processing fails or unsupported format detected
         """
@@ -61,9 +61,10 @@ class MessageParser:
 
         # Extract message parts
         message_parts = self._extract_parts(context.message)
-        
+
         if self.debug:
-            logger.info(f"DEBUG: Processing message with {len(message_parts)} parts")
+            logger.info(
+                f"DEBUG: Processing message with {len(message_parts)} parts")
 
         text_query = None
         image_bytes = None
@@ -71,7 +72,8 @@ class MessageParser:
 
         # Process message parts to extract text and file parts
         for i, part in enumerate(message_parts):
-            part_kind, part_text, part_file = self._extract_part_attributes(part, i)
+            part_kind, part_text, part_file = self._extract_part_attributes(
+                part, i)
 
             if self.debug:
                 part_debug = f"DEBUG: Part {i}: kind={part_kind}, has_text={part_text is not None}, has_file={part_file is not None}"
@@ -83,7 +85,7 @@ class MessageParser:
                 if self.debug:
                     text_debug = f"DEBUG: Extracted text query: {text_query[:50] if len(text_query) > 50 else text_query}..."
                     logger.info(text_debug)
-            
+
             # Handle file parts (FilePart - only FileWithBytes supported for local uploads)
             elif part_kind == 'file' and part_file:
                 parsed_image = self._extract_image(part_file, i)
@@ -106,33 +108,36 @@ class MessageParser:
 
     def _extract_parts(self, message: Any) -> List[Any]:
         """Extract parts from message using multiple strategies.
-        
+
         Args:
             message: A2A message object
-            
+
         Returns:
             List of message parts
         """
         message_parts = []
-        
+
         # Method 1: Direct parts attribute
         if hasattr(message, 'parts'):
             message_parts = message.parts
             if self.debug:
-                logger.info(f"DEBUG: Found parts via context.message.parts: {len(message_parts) if message_parts else 0}")
-        
+                logger.info(
+                    f"DEBUG: Found parts via context.message.parts: {len(message_parts) if message_parts else 0}")
+
         # Method 2: Nested message.parts
         elif hasattr(message, 'message') and hasattr(message.message, 'parts'):
             message_parts = message.message.parts
             if self.debug:
-                logger.info(f"DEBUG: Found parts via context.message.message.parts: {len(message_parts)}")
-        
+                logger.info(
+                    f"DEBUG: Found parts via context.message.message.parts: {len(message_parts)}")
+
         # Method 3: Dict access
         elif isinstance(message, dict) and 'parts' in message:
             message_parts = message['parts']
             if self.debug:
-                logger.info(f"DEBUG: Found parts via dict access: {len(message_parts)}")
-        
+                logger.info(
+                    f"DEBUG: Found parts via dict access: {len(message_parts)}")
+
         # Method 4: Deep inspection (debug only)
         elif self.debug:
             logger.info(f"DEBUG: Inspecting message object: {dir(message)}")
@@ -143,11 +148,11 @@ class MessageParser:
 
     def _extract_part_attributes(self, part: Any, index: int) -> tuple[Optional[str], Optional[str], Optional[Any]]:
         """Extract kind, text, and file attributes from a part.
-        
+
         Args:
             part: Message part object
             index: Part index for debugging
-            
+
         Returns:
             Tuple of (kind, text, file)
         """
@@ -164,17 +169,18 @@ class MessageParser:
         if part_kind is None or (part_text is None and part_file is None):
             try:
                 part_dict = self._part_to_dict(part)
-                
+
                 if part_kind is None:
                     part_kind = part_dict.get('kind')
                 if part_text is None:
                     part_text = part_dict.get('text')
                 if part_file is None:
                     part_file = part_dict.get('file')
-                    
+
                 if self.debug and part_dict:
                     part_json_str = json.dumps(part_dict, default=str)
-                    logger.info(f"DEBUG: Part {index} JSON: {part_json_str[:200]}...")
+                    logger.info(
+                        f"DEBUG: Part {index} JSON: {part_json_str[:200]}...")
             except Exception as e:
                 if self.debug:
                     logger.error(f"DEBUG: Error accessing part as dict: {e}")
@@ -185,10 +191,10 @@ class MessageParser:
 
     def _part_to_dict(self, part: Any) -> dict:
         """Convert part to dictionary using multiple strategies.
-        
+
         Args:
             part: Part object
-            
+
         Returns:
             Dictionary representation of part
         """
@@ -205,40 +211,51 @@ class MessageParser:
 
     def _extract_image(self, file_obj: Any, index: int) -> Optional[tuple[bytes, str]]:
         """Extract and validate image from a file part.
-        
+
         Args:
             file_obj: File part object
             index: Part index for debugging
-            
+
         Returns:
             Tuple of (image_bytes, mime_type) or None if extraction fails
-            
+
         Raises:
             ValueError: If image is invalid or unsupported format
         """
         file_bytes = None
         file_mime_type = None
 
-        # Method 1: Direct attribute access
-        file_bytes = getattr(file_obj, 'bytes', None)
-        file_mime_type = getattr(file_obj, 'mimeType', None) or getattr(
-            file_obj, 'mime_type', None)
+        # Handle dict first (common case from A2A protocol)
+        if isinstance(file_obj, dict):
+            file_bytes = file_obj.get('bytes')
+            file_mime_type = file_obj.get(
+                'mimeType') or file_obj.get('mime_type')
+            if self.debug:
+                logger.info(
+                    f"DEBUG: File dict access - bytes present: {file_bytes is not None}, mime_type: {file_mime_type}")
+        else:
+            # Method 1: Direct attribute access
+            file_bytes = getattr(file_obj, 'bytes', None)
+            file_mime_type = getattr(file_obj, 'mimeType', None) or getattr(
+                file_obj, 'mime_type', None)
 
-        # Method 2: Try dict access
-        if file_bytes is None:
-            try:
-                file_dict = self._part_to_dict(file_obj)
-                file_bytes = file_dict.get('bytes')
-                file_mime_type = file_dict.get('mimeType') or file_dict.get('mime_type')
-                
-                if self.debug:
-                    logger.info(
-                        f"DEBUG: File dict access - bytes present: {file_bytes is not None}, mime_type: {file_mime_type}")
-            except Exception as e:
-                if self.debug:
-                    logger.error(f"DEBUG: Error accessing file as dict: {e}")
-                    import traceback
-                    traceback.print_exc()
+            # Method 2: Try dict access via _part_to_dict
+            if file_bytes is None:
+                try:
+                    file_dict = self._part_to_dict(file_obj)
+                    file_bytes = file_dict.get('bytes')
+                    file_mime_type = file_dict.get(
+                        'mimeType') or file_dict.get('mime_type')
+
+                    if self.debug:
+                        logger.info(
+                            f"DEBUG: File dict access - bytes present: {file_bytes is not None}, mime_type: {file_mime_type}")
+                except Exception as e:
+                    if self.debug:
+                        logger.error(
+                            f"DEBUG: Error accessing file as dict: {e}")
+                        import traceback
+                        traceback.print_exc()
 
         if self.debug:
             file_debug = f"DEBUG: Found file part, has bytes={file_bytes is not None}, has uri={hasattr(file_obj, 'uri') or (isinstance(file_obj, dict) and 'uri' in file_obj)}"
@@ -261,15 +278,15 @@ class MessageParser:
 
     def _process_image_bytes(self, file_bytes: str, file_mime_type: Optional[str], index: int) -> tuple[bytes, str]:
         """Process base64-encoded image bytes.
-        
+
         Args:
             file_bytes: Base64-encoded image string
             file_mime_type: MIME type of the image
             index: Part index for debugging
-            
+
         Returns:
             Tuple of (decoded_bytes, mime_type)
-            
+
         Raises:
             ValueError: If image is invalid or exceeds size limit
         """
@@ -294,12 +311,12 @@ class MessageParser:
             if len(image_bytes) > self.MAX_IMAGE_SIZE:
                 raise ValueError(
                     f'Image size ({len(image_bytes)} bytes) exceeds maximum ({self.MAX_IMAGE_SIZE} bytes)')
-            
+
             if self.debug:
                 logger.info("DEBUG: Image validation passed")
-                
+
             return image_bytes, image_mime_type
-            
+
         except Exception as e:
             error_debug = f"DEBUG: Error processing image: {e}"
             if self.debug:
@@ -310,7 +327,7 @@ class MessageParser:
 
     def _log_message_structure(self, context: RequestContext) -> None:
         """Log message structure for debugging.
-        
+
         Args:
             context: Request context
         """
@@ -321,11 +338,14 @@ class MessageParser:
         try:
             if hasattr(context.message, '__dict__'):
                 msg_dict = context.message.__dict__
-                logger.info(f"DEBUG: Message __dict__ keys: {list(msg_dict.keys())}")
-            
+                logger.info(
+                    f"DEBUG: Message __dict__ keys: {list(msg_dict.keys())}")
+
             if hasattr(context.message, 'model_dump'):
-                msg_json = json.dumps(context.message.model_dump(), default=str)
-                logger.info(f"DEBUG: Message as JSON (first 500 chars): {msg_json[:500]}")
+                msg_json = json.dumps(
+                    context.message.model_dump(), default=str)
+                logger.info(
+                    f"DEBUG: Message as JSON (first 500 chars): {msg_json[:500]}")
         except Exception as e:
             logger.info(f"DEBUG: Could not serialize message: {e}")
 
@@ -340,4 +360,3 @@ class MessageParser:
                     logger.info(f"DEBUG: Part {i} JSON: {part_json[:200]}")
             except:
                 pass
-
