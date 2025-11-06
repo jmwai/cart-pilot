@@ -18,6 +18,75 @@ SAMPLE_ADDRESSES = [
 ]
 
 
+def prepare_order_summary(tool_context: ToolContext) -> Dict[str, Any]:
+    """
+    Prepare order summary with shipping address WITHOUT creating the order.
+    This allows users to review order details before confirming.
+
+    Args:
+        tool_context: ADK tool context providing access to session
+
+    Returns:
+        Order summary with items, total, and shipping address
+    """
+    # Get session_id from context
+    session_id = tool_context._invocation_context.session.id
+
+    # Select shipping address (demo: randomly selected, pretending it's from user profile)
+    # If pending_order_summary exists, reuse its shipping address for consistency
+    pending_summary = tool_context.state.get("pending_order_summary")
+    if pending_summary and isinstance(pending_summary, dict) and pending_summary is not None:
+        shipping_address = pending_summary.get("shipping_address")
+    else:
+        shipping_address = random.choice(SAMPLE_ADDRESSES)
+
+    with get_db_session() as db:
+        # Get cart items with product relationship
+        cart_items = db.query(CartItem).filter(
+            CartItem.session_id == session_id
+        ).all()
+
+        if not cart_items:
+            raise ValueError("Cart is empty")
+
+        # Calculate total amount and format items (without creating order)
+        total_amount = 0.0
+        items = []
+        for cart_item in cart_items:
+            product = cart_item.product
+            # Get price from product (price_usd_units is stored as dollars, not cents)
+            price_usd_units = product.price_usd_units or 0
+            price = float(price_usd_units)  # Already in dollars, use directly
+            subtotal = price * cart_item.quantity
+            total_amount += subtotal
+
+            items.append({
+                "product_id": cart_item.product_id,
+                "name": product.name,
+                "quantity": cart_item.quantity,
+                "price": price,
+                "picture": product.product_image_url or product.picture,
+                "subtotal": subtotal,
+            })
+
+        # Store summary in state (NOT current_order - order doesn't exist yet)
+        order_summary = {
+            "items": items,
+            "total_amount": total_amount,
+            "shipping_address": shipping_address,
+            "item_count": len(items),
+        }
+        tool_context.state["pending_order_summary"] = order_summary
+
+        return {
+            "items": items,
+            "total_amount": total_amount,
+            "shipping_address": shipping_address,
+            "item_count": len(items),
+            "message": "Order summary prepared. Please review and confirm.",
+        }
+
+
 def create_order(tool_context: ToolContext) -> Dict[str, Any]:
     """
     Convert cart to order with AP2 cart mandate.
@@ -32,8 +101,15 @@ def create_order(tool_context: ToolContext) -> Dict[str, Any]:
     # Get session_id from context
     session_id = tool_context._invocation_context.session.id
 
-    # Select random shipping address (demo: pretending it's from user profile)
-    shipping_address = random.choice(SAMPLE_ADDRESSES)
+    # Check for pending_order_summary - use its shipping address if available
+    # This ensures the order matches what the user confirmed
+    pending_summary = tool_context.state.get("pending_order_summary")
+    if pending_summary and isinstance(pending_summary, dict) and pending_summary is not None:
+        shipping_address = pending_summary.get("shipping_address")
+        # Use shipping address from summary for consistency
+    else:
+        # Fallback: Select random shipping address (demo: pretending it's from user profile)
+        shipping_address = random.choice(SAMPLE_ADDRESSES)
 
     with get_db_session() as db:
         # Get cart items with product relationship
@@ -99,6 +175,10 @@ def create_order(tool_context: ToolContext) -> Dict[str, Any]:
         }
         tool_context.state["current_order"] = order_data
         tool_context.state["shipping_address"] = shipping_address
+
+        # Clear pending_order_summary since order is now created
+        # Use assignment to None instead of del (state may not support deletion)
+        tool_context.state["pending_order_summary"] = None
 
         return {
             "order_id": order_id,

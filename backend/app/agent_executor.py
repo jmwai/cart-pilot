@@ -586,6 +586,7 @@ class ShoppingAgentExecutor(AgentExecutor):
             products_sent = False
             cart_sent = False
             order_sent = False
+            order_summary_sent = False  # Track if order summary artifact was sent
 
             # Track initial state to detect modifications
             initial_session = await self.runner.session_service.get_session(
@@ -599,6 +600,7 @@ class ShoppingAgentExecutor(AgentExecutor):
             initial_cart = initial_state.get(
                 "cart") or initial_state.get("cart_items", [])
             initial_order = initial_state.get("current_order")
+            initial_order_summary = initial_state.get("pending_order_summary")
 
             # Helper function to format products
             def format_products(products_list):
@@ -637,6 +639,19 @@ class ShoppingAgentExecutor(AgentExecutor):
                         "subtotal": sum(item.get("subtotal", 0.0) for item in cart_data)
                     }
                 return None
+
+            # Helper function to format order summary
+            def format_order_summary(summary_state):
+                summary_data = summary_state.get("pending_order_summary")
+                if not summary_data or summary_data is None or not isinstance(summary_data, dict):
+                    return None
+                return {
+                    "type": "order_summary",
+                    "items": summary_data.get("items", []),
+                    "total_amount": summary_data.get("total_amount", 0.0),
+                    "shipping_address": summary_data.get("shipping_address", ""),
+                    "item_count": summary_data.get("item_count", 0),
+                }
 
             # Helper function to format order
             def format_order(order_state):
@@ -711,6 +726,56 @@ class ShoppingAgentExecutor(AgentExecutor):
                                     #     ),
                                     # )
 
+                # Handle final response - ensure any remaining artifacts are sent
+                if event.is_final_response():
+                    try:
+                        current_session = await self.runner.session_service.get_session(
+                            app_name=self.agent.name,
+                            user_id=user_id,
+                            session_id=session_id
+                        )
+                        session_state = current_session.state if hasattr(
+                            current_session, 'state') else {}
+
+                        # Send order summary if it was prepared but not yet sent
+                        if not order_summary_sent and "pending_order_summary" in session_state:
+                            current_order_summary = session_state.get(
+                                "pending_order_summary")
+                            # Only send if summary is new (different from initial) and not None
+                            if current_order_summary and current_order_summary is not None and current_order_summary != initial_order_summary:
+                                order_summary_artifact_data = format_order_summary(
+                                    session_state)
+                                if order_summary_artifact_data:
+                                    await updater.add_artifact(
+                                        [Part(root=DataPart(
+                                            data=order_summary_artifact_data,
+                                            mimeType="application/json"
+                                        ))],
+                                        name="order_summary"
+                                    )
+                                    order_summary_sent = True
+
+                        # Send order if it was created but not yet sent
+                        if not order_sent and "current_order" in session_state:
+                            current_order = session_state.get("current_order")
+                            if current_order and current_order != initial_order:
+                                if not initial_order or current_order.get("order_id") != initial_order.get("order_id"):
+                                    order_artifact_data = format_order(
+                                        session_state)
+                                    if order_artifact_data:
+                                        await updater.add_artifact(
+                                            [Part(root=DataPart(
+                                                data=order_artifact_data,
+                                                mimeType="application/json"
+                                            ))],
+                                            name="order"
+                                        )
+                                        order_sent = True
+                    except Exception as final_state_error:
+                        logger.error(
+                            f"Error processing final response state: {final_state_error}")
+                        pass
+
                 # Check for state updates (products, cart) periodically
                 # Check state after every event, but only send if available and not already sent
                 if not event.is_final_response():
@@ -761,6 +826,24 @@ class ShoppingAgentExecutor(AgentExecutor):
                                         name="cart"
                                     )
                                     cart_sent = True
+
+                        # Stream order summary ONLY if it was prepared during this request
+                        if not order_summary_sent and "pending_order_summary" in session_state:
+                            current_order_summary = session_state.get(
+                                "pending_order_summary")
+                            # Only send if summary is new (different from initial) or was just prepared
+                            if current_order_summary and current_order_summary != initial_order_summary:
+                                order_summary_artifact_data = format_order_summary(
+                                    session_state)
+                                if order_summary_artifact_data:
+                                    await updater.add_artifact(
+                                        [Part(root=DataPart(
+                                            data=order_summary_artifact_data,
+                                            mimeType="application/json"
+                                        ))],
+                                        name="order_summary"
+                                    )
+                                    order_summary_sent = True
 
                         # Stream order ONLY if it was created during this request
                         if not order_sent and "current_order" in session_state:
@@ -831,6 +914,23 @@ class ShoppingAgentExecutor(AgentExecutor):
                             name="cart"
                         )
 
+            # Ensure order summary is sent if it was prepared (not already sent)
+            if not order_summary_sent:
+                current_order_summary = session_state.get(
+                    "pending_order_summary")
+                # Only send if summary is new (different from initial) and not None
+                if current_order_summary and current_order_summary is not None and current_order_summary != initial_order_summary:
+                    order_summary_artifact_data = format_order_summary(
+                        session_state)
+                    if order_summary_artifact_data:
+                        await updater.add_artifact(
+                            [Part(root=DataPart(
+                                data=order_summary_artifact_data,
+                                mimeType="application/json"
+                            ))],
+                            name="order_summary"
+                        )
+
             # Ensure order is sent if it was created (not already sent)
             if not order_sent:
                 current_order = session_state.get("current_order")
@@ -848,8 +948,18 @@ class ShoppingAgentExecutor(AgentExecutor):
                                 name="order"
                             )
 
-            # Complete the task
-            await updater.complete()
+            # Complete the task - ensure this always happens
+            try:
+                logger.info("Completing task and sending completion event")
+                await updater.complete()
+                logger.info("Task completed successfully")
+            except Exception as complete_error:
+                logger.error(f"Error completing task: {complete_error}")
+                # Still try to mark as complete even if there's an error
+                try:
+                    await updater.complete()
+                except:
+                    pass
 
         except Exception as e:
             # Handle errors gracefully
