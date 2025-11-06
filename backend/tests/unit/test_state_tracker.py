@@ -7,7 +7,7 @@ from app.utils.state_tracker import StateTracker
 
 
 class TestStateTracker:
-    """Tests for StateTracker class"""
+    """Tests for StateTracker class."""
 
     def test_init(self):
         """Test StateTracker initialization"""
