@@ -7,7 +7,7 @@ from sqlalchemy import func
 from google.adk.tools import ToolContext
 
 from app.common.db import get_db_session
-from app.common.models import CartItem, Order, OrderItem, CatalogItem
+from app.common.models import CartItem, Order, OrderItem, CatalogItem, Payment
 
 # Sample shipping addresses for demo purposes
 SAMPLE_ADDRESSES = [
@@ -89,7 +89,7 @@ def prepare_order_summary(tool_context: ToolContext) -> Dict[str, Any]:
 
 def create_order(tool_context: ToolContext) -> Dict[str, Any]:
     """
-    Convert cart to order with AP2 cart mandate.
+    Convert cart to order. Payment must be processed before order creation.
     Shipping address is retrieved from user profile (hardcoded for demo).
 
     Args:
@@ -100,6 +100,15 @@ def create_order(tool_context: ToolContext) -> Dict[str, Any]:
     """
     # Get session_id from context
     session_id = tool_context._invocation_context.session.id
+
+    # Check if payment has been processed
+    payment_processed = tool_context.state.get("payment_processed", False)
+    payment_data = tool_context.state.get("payment_data")
+
+    if not payment_processed or not payment_data:
+        raise ValueError(
+            "Payment must be processed before creating order. Please complete payment first."
+        )
 
     # Check for pending_order_summary - use its shipping address if available
     # This ensures the order matches what the user confirmed
@@ -155,10 +164,23 @@ def create_order(tool_context: ToolContext) -> Dict[str, Any]:
             order_id=order_id,
             session_id=session_id,
             total_amount=total_amount,
-            status="completed",  # Mark as completed since payment is skipped
+            status="completed",  # Payment already processed
             shipping_address=shipping_address
         )
         db.add(order)
+
+        # Create Payment record now that we have order_id
+        # Payment details were stored in state by process_payment()
+        payment = Payment(
+            payment_id=payment_data["payment_id"],
+            order_id=order_id,
+            amount=payment_data["amount"],
+            payment_method=payment_data["payment_method"],
+            payment_mandate_id=payment_data["payment_mandate_id"],
+            transaction_id=payment_data["transaction_id"],
+            status="completed"
+        )
+        db.add(payment)
 
         # Clear cart
         db.query(CartItem).filter(CartItem.session_id == session_id).delete()
@@ -172,13 +194,17 @@ def create_order(tool_context: ToolContext) -> Dict[str, Any]:
             "total_amount": total_amount,
             "shipping_address": shipping_address,
             "created_at": order.created_at.isoformat() if order.created_at else datetime.now().isoformat(),
+            "payment_id": payment_data["payment_id"],
+            "transaction_id": payment_data["transaction_id"],
         }
         tool_context.state["current_order"] = order_data
         tool_context.state["shipping_address"] = shipping_address
 
-        # Clear pending_order_summary since order is now created
+        # Clear pending_order_summary and payment data since order is now created
         # Use assignment to None instead of del (state may not support deletion)
         tool_context.state["pending_order_summary"] = None
+        tool_context.state["payment_data"] = None
+        tool_context.state["payment_processed"] = False
 
         return {
             "order_id": order_id,
@@ -187,6 +213,8 @@ def create_order(tool_context: ToolContext) -> Dict[str, Any]:
             "total_amount": total_amount,
             "shipping_address": shipping_address,
             "created_at": order_data["created_at"],
+            "payment_id": payment_data["payment_id"],
+            "transaction_id": payment_data["transaction_id"],
             "message": "Order created successfully",
         }
 
