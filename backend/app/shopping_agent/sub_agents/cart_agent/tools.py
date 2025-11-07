@@ -143,6 +143,31 @@ def add_to_cart(
         db.add(cart_item)
         # commit() happens automatically in context manager
 
+        # Update session state with current cart to ensure executor can detect changes
+        # Query all cart items for this session to update state
+        cart_items = db.query(CartItem).filter(
+            CartItem.session_id == session_id
+        ).order_by(CartItem.added_at.desc()).all()
+
+        items = []
+        for item in cart_items:
+            # Load product data via relationship
+            product = item.product
+            price = product.price_usd_units or 0.0
+            cart_item_data = {
+                "cart_item_id": item.cart_item_id,
+                "product_id": item.product_id,
+                "quantity": item.quantity,
+                "name": product.name,
+                "picture": product.product_image_url or product.picture,
+                "price": price,
+                "subtotal": price * item.quantity,
+            }
+            items.append(cart_item_data)
+
+        # Store cart items in state for executor access
+        tool_context.state["cart"] = items
+
         return {
             "cart_item_id": cart_item.cart_item_id,
             "product_id": product_id,
@@ -193,11 +218,12 @@ def get_cart(tool_context: ToolContext) -> List[Dict[str, Any]]:
         return items
 
 
-def update_cart_item(cart_item_id: str, quantity: int) -> Dict[str, Any]:
+def update_cart_item(tool_context: ToolContext, cart_item_id: str, quantity: int) -> Dict[str, Any]:
     """
     Update item quantity in cart.
 
     Args:
+        tool_context: ADK tool context providing access to session
         cart_item_id: Cart item identifier
         quantity: New quantity (must be > 0)
 
@@ -206,6 +232,9 @@ def update_cart_item(cart_item_id: str, quantity: int) -> Dict[str, Any]:
     """
     if quantity <= 0:
         raise ValueError("Quantity must be greater than 0")
+
+    # Get session_id from context
+    session_id = tool_context._invocation_context.session.id
 
     with get_db_session() as db:
         cart_item = db.query(CartItem).filter(
@@ -216,6 +245,30 @@ def update_cart_item(cart_item_id: str, quantity: int) -> Dict[str, Any]:
         cart_item.quantity = quantity
         # commit() happens automatically in context manager
 
+        # Update session state with current cart to ensure executor can detect changes
+        cart_items = db.query(CartItem).filter(
+            CartItem.session_id == session_id
+        ).order_by(CartItem.added_at.desc()).all()
+
+        items = []
+        for item in cart_items:
+            # Load product data via relationship
+            product = item.product
+            price = product.price_usd_units or 0.0
+            cart_item_data = {
+                "cart_item_id": item.cart_item_id,
+                "product_id": item.product_id,
+                "quantity": item.quantity,
+                "name": product.name,
+                "picture": product.product_image_url or product.picture,
+                "price": price,
+                "subtotal": price * item.quantity,
+            }
+            items.append(cart_item_data)
+
+        # Store cart items in state for executor access
+        tool_context.state["cart"] = items
+
         return {
             "cart_item_id": cart_item_id,
             "quantity": quantity,
@@ -223,16 +276,20 @@ def update_cart_item(cart_item_id: str, quantity: int) -> Dict[str, Any]:
         }
 
 
-def remove_from_cart(cart_item_id: str) -> Dict[str, Any]:
+def remove_from_cart(tool_context: ToolContext, cart_item_id: str) -> Dict[str, Any]:
     """
     Remove item from cart.
 
     Args:
+        tool_context: ADK tool context providing access to session
         cart_item_id: Cart item identifier
 
     Returns:
         Status message
     """
+    # Get session_id from context
+    session_id = tool_context._invocation_context.session.id
+
     with get_db_session() as db:
         cart_item = db.query(CartItem).filter(
             CartItem.cart_item_id == cart_item_id).first()
@@ -241,6 +298,30 @@ def remove_from_cart(cart_item_id: str) -> Dict[str, Any]:
 
         db.delete(cart_item)
         # commit() happens automatically in context manager
+
+        # Update session state with current cart to ensure executor can detect changes
+        cart_items = db.query(CartItem).filter(
+            CartItem.session_id == session_id
+        ).order_by(CartItem.added_at.desc()).all()
+
+        items = []
+        for item in cart_items:
+            # Load product data via relationship
+            product = item.product
+            price = product.price_usd_units or 0.0
+            cart_item_data = {
+                "cart_item_id": item.cart_item_id,
+                "product_id": item.product_id,
+                "quantity": item.quantity,
+                "name": product.name,
+                "picture": product.product_image_url or product.picture,
+                "price": price,
+                "subtotal": price * item.quantity,
+            }
+            items.append(cart_item_data)
+
+        # Store cart items in state for executor access
+        tool_context.state["cart"] = items
 
         return {
             "status": "removed",
@@ -265,6 +346,9 @@ def clear_cart(tool_context: ToolContext) -> Dict[str, Any]:
         items_removed = db.query(CartItem).filter(
             CartItem.session_id == session_id).delete()
         # commit() happens automatically in context manager
+
+        # Update session state with empty cart to ensure executor can detect changes
+        tool_context.state["cart"] = []
 
         return {
             "status": "cleared",
