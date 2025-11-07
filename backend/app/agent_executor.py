@@ -20,9 +20,10 @@ from a2a.utils import new_agent_text_message, new_task
 from google.adk.artifacts import InMemoryArtifactService
 from google.adk.memory.in_memory_memory_service import InMemoryMemoryService
 from google.adk.runners import Runner
-from google.adk.sessions import InMemorySessionService
+from google.adk.sessions import InMemorySessionService, DatabaseSessionService
 from google.genai import types
 
+from app.common.db import get_database_url_for_adk
 from app.shopping_agent import root_agent as shopping_agent
 from app.utils.constants import TOOL_STATUS_MESSAGES
 from app.utils.artifact_formatter import ArtifactFormatter
@@ -56,14 +57,47 @@ class ShoppingAgentExecutor(AgentExecutor):
         self.status_message = status_message
         self.artifact_name = artifact_name
 
-        # Initialize ADK Runner with in-memory services
+        # Initialize ADK Runner with database-backed session service if available
         self.runner = Runner(
             app_name=self.agent.name,
             agent=self.agent,
             artifact_service=InMemoryArtifactService(),
-            session_service=InMemorySessionService(),
+            session_service=self._create_session_service(),
             memory_service=InMemoryMemoryService(),
         )
+
+    def _create_session_service(self):
+        """
+        Create session service instance.
+
+        Attempts to create DatabaseSessionService if database configuration is available.
+        Falls back to InMemorySessionService if database is not configured or initialization fails.
+
+        Returns:
+            DatabaseSessionService or InMemorySessionService instance
+        """
+        db_url = get_database_url_for_adk()
+
+        if db_url is None:
+            logger.info(
+                "Database configuration not available. Using InMemorySessionService."
+            )
+            return InMemorySessionService()
+
+        try:
+            session_service = DatabaseSessionService(db_url=db_url)
+            # Log database name without exposing credentials
+            db_name = db_url.split('@')[-1].split('?')[0].split('/')[-1]
+            logger.info(
+                f"Initialized DatabaseSessionService with database: {db_name}"
+            )
+            return session_service
+        except Exception as e:
+            logger.warning(
+                f"Failed to initialize DatabaseSessionService: {e}. "
+                "Falling back to InMemorySessionService."
+            )
+            return InMemorySessionService()
 
     async def cancel(
         self,

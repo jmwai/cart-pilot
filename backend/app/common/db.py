@@ -7,6 +7,7 @@ import psycopg2
 from psycopg2.pool import SimpleConnectionPool
 from typing import Optional, Generator
 from contextlib import contextmanager
+from urllib.parse import quote_plus
 
 from sqlalchemy import create_engine, text
 from sqlalchemy.orm import sessionmaker, Session
@@ -79,6 +80,33 @@ def build_engine_config():
         url = f"postgresql+psycopg2://{settings.DB_USER}:{settings.DB_PASSWORD}@{settings.DB_HOST}:{settings.DB_PORT}/{settings.DB_NAME}"
         connect_args = {}
         return url, connect_args
+
+
+def get_database_url_for_adk() -> Optional[str]:
+    """
+    Build database URL for ADK DatabaseSessionService.
+
+    Returns a SQLAlchemy-compatible URL string suitable for DatabaseSessionService.
+    For Cloud SQL Unix sockets, includes the host in the URL query string.
+    Returns None if database configuration is incomplete.
+
+    Returns:
+        Database URL string or None if configuration is incomplete
+    """
+    if IS_PRODUCTION:
+        # Production: Cloud SQL with Unix socket
+        if not settings.CLOUD_SQL_CONNECTION_NAME:
+            return None
+        # Format: postgresql+psycopg2://user:pass@/dbname?host=/cloudsql/connection_name
+        url = f"postgresql+psycopg2://{settings.DB_USER}:{settings.DB_PASSWORD}@/{settings.DB_NAME}?host=/cloudsql/{settings.CLOUD_SQL_CONNECTION_NAME}"
+        return url
+    else:
+        # Local development: standard PostgreSQL connection
+        if not settings.DB_HOST:
+            return None
+        url = f"postgresql+psycopg2://{settings.DB_USER}:{settings.DB_PASSWORD}@{settings.DB_HOST}:{settings.DB_PORT}/{settings.DB_NAME}"
+        return url
+
 
 connection_url, connect_args = build_engine_config()
 engine = create_engine(
