@@ -187,7 +187,7 @@ class TestGetCart:
 class TestUpdateCartItem:
     """Tests for update_cart_item() function"""
 
-    def test_update_cart_item_success(self, mock_db_session, sample_cart_item):
+    def test_update_cart_item_success(self, mock_db_session, sample_cart_item, mock_tool_context):
         """Test successful update of cart item quantity"""
         with patch('app.shopping_agent.sub_agents.cart_agent.tools.get_db_session') as mock_session:
             mock_session.return_value.__enter__.return_value = mock_db_session
@@ -196,14 +196,14 @@ class TestUpdateCartItem:
             mock_db_session.query.return_value.filter.return_value.first.return_value = sample_cart_item
 
             # Execute
-            result = update_cart_item("cart_item_123", 5)
+            result = update_cart_item(mock_tool_context, "cart_item_123", 5)
 
             # Assert
             assert result["cart_item_id"] == "cart_item_123"
             assert result["quantity"] == 5
             assert sample_cart_item.quantity == 5
 
-    def test_update_cart_item_not_found(self, mock_db_session):
+    def test_update_cart_item_not_found(self, mock_db_session, mock_tool_context):
         """Test ValueError raised when cart item doesn't exist"""
         with patch('app.shopping_agent.sub_agents.cart_agent.tools.get_db_session') as mock_session:
             mock_session.return_value.__enter__.return_value = mock_db_session
@@ -213,23 +213,23 @@ class TestUpdateCartItem:
 
             # Execute & Assert
             with pytest.raises(ValueError, match="Cart item cart_item_999 not found"):
-                update_cart_item("cart_item_999", 2)
+                update_cart_item(mock_tool_context, "cart_item_999", 2)
 
-    def test_update_cart_item_zero_quantity(self, mock_db_session):
+    def test_update_cart_item_zero_quantity(self, mock_db_session, mock_tool_context):
         """Test ValueError raised for zero quantity"""
         with pytest.raises(ValueError, match="Quantity must be greater than 0"):
-            update_cart_item("cart_item_123", 0)
+            update_cart_item(mock_tool_context, "cart_item_123", 0)
 
-    def test_update_cart_item_negative_quantity(self, mock_db_session):
+    def test_update_cart_item_negative_quantity(self, mock_db_session, mock_tool_context):
         """Test ValueError raised for negative quantity"""
         with pytest.raises(ValueError, match="Quantity must be greater than 0"):
-            update_cart_item("cart_item_123", -1)
+            update_cart_item(mock_tool_context, "cart_item_123", -1)
 
 
 class TestRemoveFromCart:
     """Tests for remove_from_cart() function"""
 
-    def test_remove_from_cart_success(self, mock_db_session, sample_cart_item):
+    def test_remove_from_cart_success(self, mock_db_session, sample_cart_item, mock_tool_context):
         """Test successful removal of cart item"""
         with patch('app.shopping_agent.sub_agents.cart_agent.tools.get_db_session') as mock_session:
             mock_session.return_value.__enter__.return_value = mock_db_session
@@ -238,14 +238,14 @@ class TestRemoveFromCart:
             mock_db_session.query.return_value.filter.return_value.first.return_value = sample_cart_item
 
             # Execute
-            result = remove_from_cart("cart_item_123")
+            result = remove_from_cart(mock_tool_context, "cart_item_123")
 
             # Assert
             assert result["status"] == "removed"
             assert result["cart_item_id"] == "cart_item_123"
             mock_db_session.delete.assert_called_once_with(sample_cart_item)
 
-    def test_remove_from_cart_not_found(self, mock_db_session):
+    def test_remove_from_cart_not_found(self, mock_db_session, mock_tool_context):
         """Test ValueError raised when cart item doesn't exist"""
         with patch('app.shopping_agent.sub_agents.cart_agent.tools.get_db_session') as mock_session:
             mock_session.return_value.__enter__.return_value = mock_db_session
@@ -255,7 +255,7 @@ class TestRemoveFromCart:
 
             # Execute & Assert
             with pytest.raises(ValueError, match="Cart item cart_item_999 not found"):
-                remove_from_cart("cart_item_999")
+                remove_from_cart(mock_tool_context, "cart_item_999")
 
 
 class TestClearCart:

@@ -146,8 +146,9 @@ def mock_tool_context():
     mock_invocation_context = Mock()
     mock_invocation_context.session = mock_session
 
-    # Create mock tool context
-    tool_context = Mock(spec=ToolContext)
+    # Create mock tool context - use MagicMock to allow attribute assignment
+    tool_context = MagicMock(spec=ToolContext)
+    # Use a real dict for state to ensure .get() works properly and is iterable
     tool_context.state = {}
     tool_context._invocation_context = mock_invocation_context
 
