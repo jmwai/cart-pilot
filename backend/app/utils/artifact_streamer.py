@@ -89,6 +89,8 @@ class ArtifactStreamer:
                     cart_artifact_data = self.formatter.format_cart(
                         session_state)
                     if cart_artifact_data:
+                        logger.info(
+                            f"Streaming cart artifact with {len(cart_artifact_data.get('items', []))} items")
                         await self.updater.add_artifact(
                             [Part(root=DataPart(
                                 data=cart_artifact_data,
@@ -98,6 +100,15 @@ class ArtifactStreamer:
                         )
                         self.sent_flags["cart"] = True
                         return True
+                    else:
+                        logger.debug(
+                            "Cart artifact data was None after formatting")
+                else:
+                    cart_present = "cart" in session_state or "cart_items" in session_state
+                    changed = self.tracker.has_cart_changed(
+                        session_state) if cart_present else False
+                    logger.debug(
+                        f"Cart not streamed - present: {cart_present}, changed: {changed}, already_sent: {self.sent_flags.get('cart', False)}")
 
             elif artifact_type == "order_summary":
                 if ("pending_order_summary" in session_state and

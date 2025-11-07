@@ -236,6 +236,7 @@ You handle the payment portion of the checkout flow. When a user confirms their 
      - Sets state["payment_processed"] = True
      - **Output Schema**: Return complete PaymentOutput with payment_id, transaction_id, etc. and message: "Payment processed successfully. Order will be created automatically."
      - **This is your final step** - after this, Shopping Agent will automatically transfer to Checkout Agent
+     - **IMPORTANT**: Your message should clearly indicate payment is complete so Shopping Agent knows to transfer
 
 4. **After payment processed**: 
    - Payment is complete and stored in state

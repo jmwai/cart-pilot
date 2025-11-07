@@ -220,6 +220,24 @@ class ShoppingAgentExecutor(AgentExecutor):
                                 task
                             )
 
+                            # After function call, check for state changes immediately
+                            # This ensures cart updates are detected right after add_to_cart, etc.
+                            try:
+                                current_session = await session_manager.get_session(
+                                    user_id=user_id,
+                                    session_id=session_id
+                                )
+                                session_state = current_session.state if hasattr(
+                                    current_session, 'state') else {}
+
+                                # Check for cart changes after function calls (especially add_to_cart)
+                                await streamer.stream_if_changed("cart", session_state)
+                                await streamer.stream_if_changed("products", session_state)
+                            except Exception as func_state_error:
+                                logger.debug(
+                                    f"Error checking state after function call: {func_state_error}")
+                                pass
+
                 # Handle final response - ensure any remaining artifacts are sent
                 if event.is_final_response():
                     try:
