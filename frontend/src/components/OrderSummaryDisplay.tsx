@@ -85,7 +85,7 @@ export default function OrderSummaryDisplay({ orderSummary }: OrderSummaryDispla
       {/* Confirmation Prompt */}
       <div className="mt-4 pt-4 border-t border-blue-100">
         <p className="text-sm text-gray-700 font-medium">
-          Please review your order above. Would you like to confirm and place this order?
+          Please review your order. Would you like to confirm and place this order?
         </p>
         <p className="text-xs text-gray-500 mt-1">
           Type "yes", "confirm", or "place order" to proceed, or "no" to cancel.
