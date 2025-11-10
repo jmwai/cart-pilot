@@ -62,7 +62,7 @@ class ShoppingAgentExecutor(AgentExecutor):
             app_name=self.agent.name,
             agent=self.agent,
             artifact_service=InMemoryArtifactService(),
-            session_service=self._create_session_service(),
+            session_service=InMemorySessionService(),
             memory_service=InMemoryMemoryService(),
         )
 
