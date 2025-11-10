@@ -88,7 +88,7 @@ export default function OrderSummaryDisplay({ orderSummary }: OrderSummaryDispla
           Please review your order. Would you like to confirm and place this order?
         </p>
         <p className="text-xs text-gray-500 mt-1">
-          Type "yes", "confirm", or "place order" to proceed, or "no" to cancel.
+          Type <span className="font-bold">"yes"</span>, <span className="font-bold">"confirm"</span>, or <span className="font-bold">"place order"</span> to proceed, or "no" to cancel.
         </p>
       </div>
     </div>
