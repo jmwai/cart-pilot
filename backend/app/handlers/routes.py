@@ -24,18 +24,48 @@ async def healthz(request):
 
 async def agent_card_endpoint(request):
     """Returns the agent card describing the shopping assistant capabilities."""
+    def get_base_url(request):
+        """Extract base URL from request, handling Cloud Run proxy headers."""
+        # Check for Cloud Run proxy headers first
+        forwarded_proto = request.headers.get("x-forwarded-proto", "")
+        forwarded_host = request.headers.get("x-forwarded-host", "")
+
+        if forwarded_proto and forwarded_host:
+            # Cloud Run provides these headers
+            return f"{forwarded_proto}://{forwarded_host}"
+
+        # Fallback to request URL
+        scheme = request.url.scheme
+        host = request.headers.get("host") or (
+            request.url.hostname or "localhost:8080")
+        # Include port if it's not standard (80 for http, 443 for https)
+        if ":" not in host and request.url.port:
+            port = request.url.port
+            if (scheme == "http" and port != 80) or (scheme == "https" and port != 443):
+                host = f"{host}:{port}"
+        return f"{scheme}://{host}"
+
     try:
-        # Use A2A SDK agent card
-        card = create_shopping_agent_card()
+        # Extract base URL from request
+        base_url = get_base_url(request)
+
+        # Use A2A SDK agent card with dynamic URL
+        card = create_shopping_agent_card(base_url=base_url)
         # Convert to dict format
         return JSONResponse(card.model_dump())
     except Exception as e:
         # Fallback to manual JSON if A2A SDK fails
         logging.warning(f"Failed to load A2A agent card: {e}")
+        # Extract base URL from request for fallback too
+        try:
+            base_url = get_base_url(request)
+        except:
+            base_url = "http://localhost:8080"
+
         return JSONResponse({
             "name": "Shopping Assistant",
             "description": "AI-powered shopping assistant that helps you discover products, manage your cart, and complete purchases",
-            "url": "http://localhost:8080/",
+            "url": base_url,
             "version": "1.0.0",
             "capabilities": {
                 "streaming": True,
