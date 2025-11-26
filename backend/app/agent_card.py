@@ -14,9 +14,12 @@ from a2a.types import (
 )
 
 
-def create_shopping_agent_card() -> AgentCard:
+def create_shopping_agent_card(base_url: str = "http://localhost:8080") -> AgentCard:
     """
     Create the agent card for the Shopping Assistant.
+
+    Args:
+        base_url: The base URL of the agent service (defaults to localhost for local development)
 
     Returns:
         AgentCard: The configured agent card for A2A protocol
@@ -24,7 +27,7 @@ def create_shopping_agent_card() -> AgentCard:
     return AgentCard(
         name="Shopping Assistant",
         description="AI-powered shopping assistant that helps you discover products, manage your cart, and complete purchases",
-        url="http://localhost:8080",
+        url=base_url,
         version="1.0.0",
         capabilities=AgentCapabilities(
             streaming=True,
