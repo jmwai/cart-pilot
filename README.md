@@ -1,4 +1,4 @@
-# Cart Pilot Frontend
+# Cart Pilot Frontend.
 
 A modern e-commerce frontend with AI-powered shopping assistant, built with Next.js 16 and integrated with the Cart Pilot backend via A2A protocol. Experience the future of shopping with AI agents that orchestrate your entire shopping journey.
 
